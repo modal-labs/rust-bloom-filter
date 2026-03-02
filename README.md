@@ -47,9 +47,7 @@ whole serialized buffer in heap memory:
 bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
-```rust
-#[cfg(feature = "mmap")]
-{
+```rust,ignore
 use bloomfilter::Bloom;
 
 let seed = [7u8; 32];
@@ -61,7 +59,6 @@ bloom.flush().unwrap(); // no-op for in-memory filters, fsync-like for mmap
 
 let reopened = Bloom::from_mmap_path(path).unwrap();
 assert!(reopened.check(&1234));
-}
 ```
 
 ### License
