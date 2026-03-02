@@ -47,18 +47,20 @@ whole serialized buffer in heap memory:
 bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
-```rust,ignore
+```rust
 use bloomfilter::Bloom;
 
 let seed = [7u8; 32];
-let path = "/tmp/example.bloom";
-let mut bloom = Bloom::new_mmap_with_seed(path, 4096, 10000, &seed).unwrap();
+let mut path = std::env::temp_dir();
+path.push(format!("bloomfilter-mmap-example-{}.bin", std::process::id()));
+let mut bloom = Bloom::new_mmap_with_seed(&path, 4096, 10000, &seed).unwrap();
 
 bloom.set(&1234);
 bloom.flush().unwrap(); // no-op for in-memory filters, fsync-like for mmap
 
-let reopened = Bloom::from_mmap_path(path).unwrap();
+let reopened = Bloom::from_mmap_path(&path).unwrap();
 assert!(reopened.check(&1234));
+std::fs::remove_file(path).ok();
 ```
 
 ### License
