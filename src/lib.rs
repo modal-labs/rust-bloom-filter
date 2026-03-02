@@ -3,7 +3,7 @@
 
 #![doc = include_str!("../README.md")]
 #![warn(non_camel_case_types, non_upper_case_globals, unused_qualifications)]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![allow(clippy::unreadable_literal, clippy::bool_comparison)]
 
 mod bitmap;
@@ -13,8 +13,13 @@ use std::cmp;
 use std::convert::TryFrom;
 use std::f64;
 use std::fmt::{self, Debug};
+#[cfg(feature = "mmap")]
+use std::fs::{File, OpenOptions};
 use std::hash::{Hash, Hasher};
+use std::io;
 use std::marker::PhantomData;
+#[cfg(feature = "mmap")]
+use std::path::Path;
 
 #[cfg(feature = "random")]
 use getrandom::getrandom;
@@ -69,11 +74,7 @@ impl<T: ?Sized> Bloom<T> {
             .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
         let bitmap = BitMap::new(bitmap_size);
-        let mut k1 = [0u8; 16];
-        let mut k2 = [0u8; 16];
-        k1.copy_from_slice(&seed[0..16]);
-        k2.copy_from_slice(&seed[16..32]);
-        let sips = [Self::sip_new(&k1), Self::sip_new(&k2)];
+        let sips = Self::sips_from_seed(seed);
         let mut res = Self {
             bitmap,
             bitmap_bits,
@@ -82,6 +83,41 @@ impl<T: ?Sized> Bloom<T> {
             _phantom: PhantomData,
         };
         res.sync();
+        Ok(res)
+    }
+
+    /// Create a new memory-mapped bloom filter structure backed by a file.
+    /// `path` is truncated if it already exists.
+    #[cfg(feature = "mmap")]
+    pub fn new_mmap_with_seed<P: AsRef<Path>>(
+        path: P,
+        bitmap_size: usize,
+        items_count: usize,
+        seed: &[u8; 32],
+    ) -> io::Result<Self> {
+        assert!(bitmap_size > 0 && items_count > 0);
+        let bitmap_bits = u64::try_from(bitmap_size)
+            .unwrap()
+            .checked_mul(8u64)
+            .unwrap();
+        let k_num = Self::optimal_k_num(bitmap_bits, items_count);
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(path)?;
+        let bitmap = BitMap::create_mmap_in_file(&file, bitmap_size)?;
+        let sips = Self::sips_from_seed(seed);
+        let mut res = Self {
+            bitmap,
+            bitmap_bits,
+            k_num,
+            sips,
+            _phantom: PhantomData,
+        };
+        res.sync();
+        res.flush()?;
         Ok(res)
     }
 
@@ -97,6 +133,20 @@ impl<T: ?Sized> Bloom<T> {
         Ok(res)
     }
 
+    /// Create a new memory-mapped bloom filter structure backed by a file.
+    /// `path` is truncated if it already exists.
+    #[cfg(all(feature = "mmap", feature = "random"))]
+    pub fn new_mmap<P: AsRef<Path>>(
+        path: P,
+        bitmap_size: usize,
+        items_count: usize,
+    ) -> io::Result<Self> {
+        let mut seed = [0u8; 32];
+        getrandom(&mut seed)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Could not generate random seed"))?;
+        Self::new_mmap_with_seed(path, bitmap_size, items_count, &seed)
+    }
+
     /// Create a new bloom filter structure.
     /// items_count is an estimation of the maximum number of items to store.
     /// fp_p is the wanted rate of false positives, in ]0.0, 1.0[
@@ -104,6 +154,18 @@ impl<T: ?Sized> Bloom<T> {
     pub fn new_for_fp_rate(items_count: usize, fp_p: f64) -> Result<Self, &'static str> {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
         Bloom::new(bitmap_size, items_count)
+    }
+
+    /// Create a new memory-mapped bloom filter structure backed by a file.
+    /// `path` is truncated if it already exists.
+    #[cfg(all(feature = "mmap", feature = "random"))]
+    pub fn new_mmap_for_fp_rate<P: AsRef<Path>>(
+        path: P,
+        items_count: usize,
+        fp_p: f64,
+    ) -> io::Result<Self> {
+        let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
+        Self::new_mmap(path, bitmap_size, items_count)
     }
 
     /// Create a new bloom filter structure.
@@ -116,6 +178,19 @@ impl<T: ?Sized> Bloom<T> {
     ) -> Result<Self, &'static str> {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
         Bloom::new_with_seed(bitmap_size, items_count, seed)
+    }
+
+    /// Create a new memory-mapped bloom filter structure backed by a file.
+    /// `path` is truncated if it already exists.
+    #[cfg(feature = "mmap")]
+    pub fn new_mmap_for_fp_rate_with_seed<P: AsRef<Path>>(
+        path: P,
+        items_count: usize,
+        fp_p: f64,
+        seed: &[u8; 32],
+    ) -> io::Result<Self> {
+        let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
+        Self::new_mmap_with_seed(path, bitmap_size, items_count, seed)
     }
 
     /// Compute a recommended bitmap size for items_count items
@@ -188,23 +263,23 @@ impl<T: ?Sized> Bloom<T> {
     /// Create a bloom filter from a slice of bytes, previously generated with `as_slice`.
     pub fn from_slice(bytes: &[u8]) -> Result<Self, &'static str> {
         let bitmap = BitMap::from_slice(bytes)?;
-        let header = bitmap.header();
-        let k_num = BitMap::get_k_num(header);
-        let seed = BitMap::get_seed(header);
-        let mut k1 = [0u8; 16];
-        let mut k2 = [0u8; 16];
-        k1.copy_from_slice(&seed[0..16]);
-        k2.copy_from_slice(&seed[16..32]);
-        let sips = [Self::sip_new(&k1), Self::sip_new(&k2)];
-        let bitmap_bits = bitmap.len_bits();
-        let res = Self {
-            bitmap,
-            bitmap_bits,
-            k_num,
-            sips,
-            _phantom: PhantomData,
-        };
-        Ok(res)
+        Self::from_bitmap(bitmap)
+    }
+
+    /// Create a bloom filter from a read-write memory-mapped file.
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_file(file: &File) -> io::Result<Self> {
+        let mmap = BitMap::map_file_mut(file)?;
+        let bitmap = BitMap::from_mmap_mut(mmap)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        Self::from_bitmap(bitmap).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+
+    /// Create a bloom filter from a read-write memory-mapped file path.
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).write(true).open(path)?;
+        Self::from_mmap_file(&file)
     }
 
     /// Serialize the bloom filter to an opaque byte vector.
@@ -220,23 +295,7 @@ impl<T: ?Sized> Bloom<T> {
     /// Transform a byte vector into a bloom filter.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
         let bitmap = BitMap::from_bytes(bytes)?;
-        let header = bitmap.header();
-        let k_num = BitMap::get_k_num(header);
-        let seed = BitMap::get_seed(header);
-        let mut k1 = [0u8; 16];
-        let mut k2 = [0u8; 16];
-        k1.copy_from_slice(&seed[0..16]);
-        k2.copy_from_slice(&seed[16..32]);
-        let sips = [Self::sip_new(&k1), Self::sip_new(&k2)];
-        let bitmap_bits = bitmap.len_bits();
-        let res = Self {
-            bitmap,
-            bitmap_bits,
-            k_num,
-            sips,
-            _phantom: PhantomData,
-        };
-        Ok(res)
+        Self::from_bitmap(bitmap)
     }
 
     /// Return the number of hash functions used for `check` and `set`
@@ -252,6 +311,12 @@ impl<T: ?Sized> Bloom<T> {
     /// Set all of the bits in the filter, making it appear like every key is in the set
     pub fn fill(&mut self) {
         self.bitmap.set_all()
+    }
+
+    /// Flush pending writes if the filter is memory-mapped.
+    /// For in-memory filters, this is a no-op.
+    pub fn flush(&self) -> io::Result<()> {
+        self.bitmap.flush()
     }
 
     /// Test if there are no elements in the set
@@ -277,9 +342,32 @@ impl<T: ?Sized> Bloom<T> {
         self
     }
 
+    fn from_bitmap(bitmap: BitMap) -> Result<Self, &'static str> {
+        let header = bitmap.header();
+        let k_num = BitMap::get_k_num(header);
+        let seed = BitMap::get_seed(header);
+        let sips = Self::sips_from_seed(&seed);
+        let bitmap_bits = bitmap.len_bits();
+        Ok(Self {
+            bitmap,
+            bitmap_bits,
+            k_num,
+            sips,
+            _phantom: PhantomData,
+        })
+    }
+
     #[inline]
     fn sip_new(key: &[u8; 16]) -> SipHasher13 {
         SipHasher13::new_with_key(key)
+    }
+
+    fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
+        let mut k1 = [0u8; 16];
+        let mut k2 = [0u8; 16];
+        k1.copy_from_slice(&seed[0..16]);
+        k2.copy_from_slice(&seed[16..32]);
+        [Self::sip_new(&k1), Self::sip_new(&k2)]
     }
 
     fn sync(&mut self) {

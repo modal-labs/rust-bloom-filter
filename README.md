@@ -29,11 +29,39 @@ use bloomfilter::Bloom;
 
 let num_items = 100000;
 let fp_rate = 0.001;
+let seed = [1u8; 32];
 
-let mut bloom = Bloom::new_for_fp_rate(num_items, fp_rate).unwrap();
+let mut bloom = Bloom::new_for_fp_rate_with_seed(num_items, fp_rate, &seed).unwrap();
 bloom.set(&10);   // insert 10 in the bloom filter
 bloom.check(&10); // return true
 bloom.check(&20); // return false
+```
+
+### Memory-mapped filters (optional)
+
+Enable the `mmap` feature to back filters with a file instead of keeping the
+whole serialized buffer in heap memory:
+
+```toml
+[dependencies]
+bloomfilter = { version = "3", features = ["mmap"] }
+```
+
+```rust
+# #[cfg(feature = "mmap")]
+# {
+use bloomfilter::Bloom;
+
+let seed = [7u8; 32];
+let path = "/tmp/example.bloom";
+let mut bloom = Bloom::new_mmap_with_seed(path, 4096, 10000, &seed).unwrap();
+
+bloom.set(&1234);
+bloom.flush().unwrap(); // no-op for in-memory filters, fsync-like for mmap
+
+let reopened = Bloom::from_mmap_path(path).unwrap();
+assert!(reopened.check(&1234));
+# }
 ```
 
 ### License

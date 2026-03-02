@@ -1,12 +1,33 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+use std::io;
+
+#[cfg(feature = "mmap")]
+use memmap2::{MmapMut, MmapOptions};
+#[cfg(feature = "mmap")]
+use std::fs::File;
 
 pub const VERSION: u8 = 1;
 pub const BITMAP_HEADER_SIZE: usize = 1 + 8 + 4 + 32;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
+enum BitMapStorage {
+    Owned(Vec<u8>),
+    #[cfg(feature = "mmap")]
+    Mapped(MmapMut),
+}
+
+#[derive(Debug)]
 pub(crate) struct BitMap {
-    header_and_bits: Vec<u8>,
+    header_and_bits: BitMapStorage,
+}
+
+impl Clone for BitMap {
+    fn clone(&self) -> Self {
+        Self {
+            header_and_bits: BitMapStorage::Owned(self.as_slice().to_vec()),
+        }
+    }
 }
 
 impl BitMap {
@@ -16,27 +37,47 @@ impl BitMap {
         Self::set_version(header, VERSION);
         Self::set_len_bytes(header, len_bytes as u64);
         Self::set_k_num(header, 0);
-        Self { header_and_bits }
+        Self {
+            header_and_bits: BitMapStorage::Owned(header_and_bits),
+        }
+    }
+
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        match &self.header_and_bits {
+            BitMapStorage::Owned(bytes) => bytes,
+            #[cfg(feature = "mmap")]
+            BitMapStorage::Mapped(mmap) => &mmap[..],
+        }
+    }
+
+    #[inline]
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        match &mut self.header_and_bits {
+            BitMapStorage::Owned(bytes) => bytes,
+            #[cfg(feature = "mmap")]
+            BitMapStorage::Mapped(mmap) => &mut mmap[..],
+        }
     }
 
     #[inline]
     fn bits(&self) -> &[u8] {
-        &self.header_and_bits[BITMAP_HEADER_SIZE..]
+        &self.bytes()[BITMAP_HEADER_SIZE..]
     }
 
     #[inline]
     fn bits_mut(&mut self) -> &mut [u8] {
-        &mut self.header_and_bits[BITMAP_HEADER_SIZE..]
+        &mut self.bytes_mut()[BITMAP_HEADER_SIZE..]
     }
 
     #[inline]
     pub fn header(&self) -> &[u8] {
-        &self.header_and_bits[0..BITMAP_HEADER_SIZE]
+        &self.bytes()[0..BITMAP_HEADER_SIZE]
     }
 
     #[inline]
     pub fn header_mut(&mut self) -> &mut [u8] {
-        &mut self.header_and_bits[0..BITMAP_HEADER_SIZE]
+        &mut self.bytes_mut()[0..BITMAP_HEADER_SIZE]
     }
 
     #[inline]
@@ -79,7 +120,7 @@ impl BitMap {
         header[13..][0..32].copy_from_slice(seed);
     }
 
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
+    fn validate_layout(bytes: &[u8]) -> Result<(), &'static str> {
         if bytes.len() < BITMAP_HEADER_SIZE {
             return Err("Invalid size");
         }
@@ -96,48 +137,79 @@ impl BitMap {
         if bits.len() != len_bytes {
             return Err("Invalid size");
         }
-        let res = Self {
-            header_and_bits: bytes,
-        };
-        Ok(res)
+        Ok(())
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
+        Self::validate_layout(&bytes)?;
+        Ok(Self {
+            header_and_bits: BitMapStorage::Owned(bytes),
+        })
     }
 
     pub fn from_slice(bytes: &[u8]) -> Result<Self, &'static str> {
-        if bytes.len() < BITMAP_HEADER_SIZE {
-            return Err("Invalid size");
-        }
-        let header = &bytes[0..BITMAP_HEADER_SIZE];
-        let bits = &bytes[BITMAP_HEADER_SIZE..];
-        if Self::get_version(header) != VERSION {
-            return Err("Version mismatch");
-        }
-        if Self::get_k_num(header) == 0 {
-            return Err("Invalid number of keys");
-        }
-        let len_bytes_u64 = Self::get_len_bytes(header);
-        let len_bytes: usize = len_bytes_u64.try_into().map_err(|_| "Too big")?;
-        if bits.len() != len_bytes {
-            return Err("Invalid size");
-        }
-        let res = Self {
-            header_and_bits: bytes.to_vec(),
-        };
-        Ok(res)
+        Self::validate_layout(bytes)?;
+        Ok(Self {
+            header_and_bits: BitMapStorage::Owned(bytes.to_vec()),
+        })
+    }
+
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_mut(mmap: MmapMut) -> Result<Self, &'static str> {
+        Self::validate_layout(&mmap)?;
+        Ok(Self {
+            header_and_bits: BitMapStorage::Mapped(mmap),
+        })
+    }
+
+    #[cfg(feature = "mmap")]
+    pub fn create_mmap_in_file(file: &File, len_bytes: usize) -> io::Result<Self> {
+        let total_len = BITMAP_HEADER_SIZE
+            .checked_add(len_bytes)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Too big"))?;
+        let total_len_u64 = u64::try_from(total_len)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Too big"))?;
+        let len_bytes_u64 = u64::try_from(len_bytes)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Too big"))?;
+        file.set_len(total_len_u64)?;
+
+        let mut mmap = Self::map_file_mut(file)?;
+        mmap.fill(0);
+        let header = &mut mmap[0..BITMAP_HEADER_SIZE];
+        Self::set_version(header, VERSION);
+        Self::set_len_bytes(header, len_bytes_u64);
+        Self::set_k_num(header, 0);
+
+        Ok(Self {
+            header_and_bits: BitMapStorage::Mapped(mmap),
+        })
+    }
+
+    #[cfg(feature = "mmap")]
+    #[allow(unsafe_code)]
+    pub fn map_file_mut(file: &File) -> io::Result<MmapMut> {
+        // SAFETY: The returned mapping owns its lifetime independently of `file`,
+        // and we only expose it through safe slice APIs in this module.
+        unsafe { MmapOptions::new().map_mut(file) }
     }
 
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
-        &self.header_and_bits
+        self.bytes()
     }
 
     #[inline]
     pub fn into_bytes(self) -> Vec<u8> {
-        self.header_and_bits
+        match self.header_and_bits {
+            BitMapStorage::Owned(bytes) => bytes,
+            #[cfg(feature = "mmap")]
+            BitMapStorage::Mapped(mmap) => mmap[..].to_vec(),
+        }
     }
 
     #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.header_and_bits.clone()
+        self.as_slice().to_vec()
     }
 
     pub fn get(&self, bit_offset: usize) -> bool {
@@ -176,11 +248,25 @@ impl BitMap {
     }
 
     #[doc(hidden)]
-    pub fn realloc_large_heap_allocated_objects(mut self, f: fn(Vec<u8>) -> Vec<u8>) -> Self {
-        let previous_len = self.header_and_bits.len();
-        self.header_and_bits = f(self.header_and_bits);
-        assert_eq!(previous_len, self.header_and_bits.len());
-        assert_eq!(Self::get_version(self.header()), VERSION);
-        self
+    pub fn realloc_large_heap_allocated_objects(self, f: fn(Vec<u8>) -> Vec<u8>) -> Self {
+        let previous_bytes = self.into_bytes();
+        let previous_len = previous_bytes.len();
+        let header_and_bits = f(previous_bytes);
+        assert_eq!(previous_len, header_and_bits.len());
+        assert_eq!(
+            Self::get_version(&header_and_bits[0..BITMAP_HEADER_SIZE]),
+            VERSION
+        );
+        Self {
+            header_and_bits: BitMapStorage::Owned(header_and_bits),
+        }
+    }
+
+    pub fn flush(&self) -> io::Result<()> {
+        match &self.header_and_bits {
+            BitMapStorage::Owned(_) => Ok(()),
+            #[cfg(feature = "mmap")]
+            BitMapStorage::Mapped(mmap) => mmap.flush(),
+        }
     }
 }
