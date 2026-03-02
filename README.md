@@ -24,7 +24,7 @@ bloomfilter = "3"
 
 Here is a simple example for creating a bloom filter with a false positive rate of 0.001 and query for presence of some numbers.
 
-```rust
+```rust,ignore
 use bloomfilter::Bloom;
 
 let num_items = 100000;
@@ -47,7 +47,7 @@ whole serialized buffer in heap memory:
 bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
-```rust
+```rust,ignore
 use bloomfilter::Bloom;
 
 let seed = [7u8; 32];
@@ -66,7 +66,7 @@ std::fs::remove_file(path).ok();
 Memory-mapped loading is compatible with filters serialized the traditional
 way (without mmap):
 
-```rust
+```rust,ignore
 use bloomfilter::Bloom;
 
 let seed = [8u8; 32];

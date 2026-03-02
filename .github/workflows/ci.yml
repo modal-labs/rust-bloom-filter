@@ -26,11 +26,11 @@ jobs:
         with:
           command: check
 
-      - name: Run doctests with all features
+      - name: Run ignored doctests with all features
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --doc --all-features
+          args: --doc --all-features -- --ignored
   
   test:
     runs-on: ${{ matrix.os }}
