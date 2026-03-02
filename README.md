@@ -63,5 +63,27 @@ assert!(reopened.check(&1234));
 std::fs::remove_file(path).ok();
 ```
 
+Memory-mapped loading is compatible with filters serialized the traditional
+way (without mmap):
+
+```rust
+use bloomfilter::Bloom;
+
+let seed = [8u8; 32];
+let mut path = std::env::temp_dir();
+path.push(format!(
+    "bloomfilter-mmap-compat-example-{}.bin",
+    std::process::id()
+));
+
+let mut plain = Bloom::new_with_seed(4096, 10000, &seed).unwrap();
+plain.set(&1234);
+std::fs::write(&path, plain.as_slice()).unwrap();
+
+let mapped = Bloom::from_mmap_path(&path).unwrap();
+assert!(mapped.check(&1234));
+std::fs::remove_file(path).ok();
+```
+
 ### License
 This project is licensed under the ISC license ([LICENSE](https://github.com/jedisct1/rust-bloom-filter/blob/master/LICENSE) or https://opensource.org/licenses/ISC).
