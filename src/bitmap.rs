@@ -10,11 +10,18 @@ use std::fs::File;
 pub const VERSION: u8 = 1;
 pub const BITMAP_HEADER_SIZE: usize = 1 + 8 + 4 + 32;
 
+#[cfg(feature = "mmap")]
+#[derive(Debug)]
+struct MappedBitMapStorage {
+    file: File,
+    mmap: MmapMut,
+}
+
 #[derive(Debug)]
 enum BitMapStorage {
     Owned(Vec<u8>),
     #[cfg(feature = "mmap")]
-    Mapped(MmapMut),
+    Mapped(MappedBitMapStorage),
 }
 
 #[derive(Debug)]
@@ -24,13 +31,27 @@ pub(crate) struct BitMap {
 
 impl Clone for BitMap {
     fn clone(&self) -> Self {
-        Self {
-            header_and_bits: BitMapStorage::Owned(self.as_slice().to_vec()),
-        }
+        self.try_clone()
+            .expect("BitMap::clone: could not clone bitmap storage")
     }
 }
 
 impl BitMap {
+    fn try_clone(&self) -> io::Result<Self> {
+        match &self.header_and_bits {
+            BitMapStorage::Owned(bytes) => Ok(Self {
+                header_and_bits: BitMapStorage::Owned(bytes.clone()),
+            }),
+            #[cfg(feature = "mmap")]
+            BitMapStorage::Mapped(mapped) => {
+                let file = mapped.file.try_clone()?;
+                let mmap = Self::map_file_mut(&file)?;
+                Self::from_mapped_parts(file, mmap)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+            }
+        }
+    }
+
     pub fn new(len_bytes: usize) -> Self {
         let mut header_and_bits = vec![0; BITMAP_HEADER_SIZE + len_bytes];
         let header = &mut header_and_bits[0..BITMAP_HEADER_SIZE];
@@ -47,7 +68,7 @@ impl BitMap {
         match &self.header_and_bits {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
-            BitMapStorage::Mapped(mmap) => &mmap[..],
+            BitMapStorage::Mapped(mapped) => &mapped.mmap[..],
         }
     }
 
@@ -56,7 +77,7 @@ impl BitMap {
         match &mut self.header_and_bits {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
-            BitMapStorage::Mapped(mmap) => &mut mmap[..],
+            BitMapStorage::Mapped(mapped) => &mut mapped.mmap[..],
         }
     }
 
@@ -155,10 +176,10 @@ impl BitMap {
     }
 
     #[cfg(feature = "mmap")]
-    pub fn from_mmap_mut(mmap: MmapMut) -> Result<Self, &'static str> {
+    fn from_mapped_parts(file: File, mmap: MmapMut) -> Result<Self, &'static str> {
         Self::validate_layout(&mmap)?;
         Ok(Self {
-            header_and_bits: BitMapStorage::Mapped(mmap),
+            header_and_bits: BitMapStorage::Mapped(MappedBitMapStorage { file, mmap }),
         })
     }
 
@@ -173,7 +194,8 @@ impl BitMap {
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Too big"))?;
         file.set_len(total_len_u64)?;
 
-        let mut mmap = Self::map_file_mut(file)?;
+        let file_for_storage = file.try_clone()?;
+        let mut mmap = Self::map_file_mut(&file_for_storage)?;
         mmap.fill(0);
         let header = &mut mmap[0..BITMAP_HEADER_SIZE];
         Self::set_version(header, VERSION);
@@ -181,8 +203,19 @@ impl BitMap {
         Self::set_k_num(header, 0);
 
         Ok(Self {
-            header_and_bits: BitMapStorage::Mapped(mmap),
+            header_and_bits: BitMapStorage::Mapped(MappedBitMapStorage {
+                file: file_for_storage,
+                mmap,
+            }),
         })
+    }
+
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_file(file: &File) -> io::Result<Self> {
+        let file_for_storage = file.try_clone()?;
+        let mmap = Self::map_file_mut(&file_for_storage)?;
+        Self::from_mapped_parts(file_for_storage, mmap)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 
     #[cfg(feature = "mmap")]
@@ -203,7 +236,7 @@ impl BitMap {
         match self.header_and_bits {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
-            BitMapStorage::Mapped(mmap) => mmap[..].to_vec(),
+            BitMapStorage::Mapped(mapped) => mapped.mmap[..].to_vec(),
         }
     }
 
@@ -266,7 +299,7 @@ impl BitMap {
         match &self.header_and_bits {
             BitMapStorage::Owned(_) => Ok(()),
             #[cfg(feature = "mmap")]
-            BitMapStorage::Mapped(mmap) => mmap.flush(),
+            BitMapStorage::Mapped(mapped) => mapped.mmap.flush(),
         }
     }
 }
