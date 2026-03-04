@@ -269,9 +269,7 @@ impl<T: ?Sized> Bloom<T> {
     /// Create a bloom filter from a read-write memory-mapped file.
     #[cfg(feature = "mmap")]
     pub fn from_mmap_file(file: &File) -> io::Result<Self> {
-        let mmap = BitMap::map_file_mut(file)?;
-        let bitmap = BitMap::from_mmap_mut(mmap)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let bitmap = BitMap::from_mmap_file(file)?;
         Self::from_bitmap(bitmap).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 
@@ -336,6 +334,7 @@ impl<T: ?Sized> Bloom<T> {
     /// Reallocate large heap allocated objects in the bitmap using the provided function.
     /// The function is expected to return a vector of the same length as the input vector,
     /// with the same content, but possibly allocated at a different location.
+    /// For mmap-backed filters, this detaches storage from the mapped file.
     /// Most applications should not need to call this function.
     pub fn realloc_large_heap_allocated_objects(mut self, f: fn(Vec<u8>) -> Vec<u8>) -> Self {
         self.bitmap = self.bitmap.realloc_large_heap_allocated_objects(f);

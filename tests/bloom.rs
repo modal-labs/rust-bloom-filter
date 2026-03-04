@@ -106,6 +106,34 @@ fn bloom_test_mmap_persist_and_reload() {
 
 #[test]
 #[cfg(feature = "mmap")]
+fn bloom_test_mmap_clone_preserves_mapping() {
+    let path = unique_temp_path("clone-preserves-mapping");
+    let seed = [9u8; 32];
+    let key_from_original = b"original-key".to_vec();
+    let key_from_clone = b"clone-key".to_vec();
+
+    {
+        let mut original = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
+        original.set(&key_from_original);
+        original.flush().unwrap();
+
+        let mut cloned = original.clone();
+        assert!(cloned.check(&key_from_original));
+        cloned.set(&key_from_clone);
+        cloned.flush().unwrap();
+    }
+
+    {
+        let reopened = Bloom::from_mmap_path(&path).unwrap();
+        assert!(reopened.check(&key_from_original));
+        assert!(reopened.check(&key_from_clone));
+    }
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[cfg(feature = "mmap")]
 fn bloom_test_mmap_load_serialized_filter() {
     let path = unique_temp_path("load-serialized");
     let seed = [5u8; 32];
