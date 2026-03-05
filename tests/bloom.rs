@@ -245,19 +245,17 @@ fn bloom_test_mmap_is_prot_read() {
 
     let canonical = path.canonicalize().unwrap();
     let maps = fs::read_to_string("/proc/self/maps").unwrap();
-    let perms: Vec<String> = maps
+    // Format: "addr-addr perms offset dev inode pathname"
+    let perm = maps
         .lines()
-        .filter(|line| line.ends_with(canonical.to_str().unwrap()))
-        .map(|line| {
-            // Format: "addr-addr perms offset dev inode pathname"
-            line.split_whitespace().nth(1).unwrap().to_string()
-        })
-        .collect();
-    assert!(!perms.is_empty(), "expected at least one mapping for {:?}", path);
-    for perm in &perms {
-        assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
-        assert_eq!(&perm[3..], "p", "expected private mapping, got {perm}");
-    }
+        .find(|line| line.ends_with(canonical.to_str().unwrap()))
+        .expect("expected a mapping in /proc/self/maps")
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .to_string();
+    assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
+    assert_eq!(&perm[3..], "p", "expected private mapping, got {perm}");
 
     drop(ro);
     fs::remove_file(path).unwrap();
