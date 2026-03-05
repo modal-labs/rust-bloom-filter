@@ -98,7 +98,7 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
     #[cfg(feature = "random")]
     pub fn new_for_fp_rate(items_count: usize, fp_p: f64) -> Result<Self, &'static str> {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
-        Bloom::new(bitmap_size, items_count)
+        Self::new(bitmap_size, items_count)
     }
 
     /// Create a new bloom filter structure.
@@ -110,7 +110,7 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
         seed: &[u8; 32],
     ) -> Result<Self, &'static str> {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
-        Bloom::new_with_seed(bitmap_size, items_count, seed)
+        Self::new_with_seed(bitmap_size, items_count, seed)
     }
 
     /// Create a bloom filter from a slice of bytes, previously generated with `as_slice`.
