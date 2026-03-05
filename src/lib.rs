@@ -245,11 +245,6 @@ impl<T: ?Sized> From<Bloom<T, Vec<u8>>> for Vec<u8> {
 }
 
 impl<T: ?Sized> Bloom<T, Vec<u8>> {
-    /// Serialize the bloom filter to an opaque byte vector.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.storage.clone()
-    }
-
     /// Create a new bloom filter structure.
     /// bitmap_size is the size in bytes (not bits) that will be allocated in
     /// memory. items_count is an estimation of the maximum number of items

@@ -70,7 +70,7 @@ fn bloom_test_load() {
 
     let original_bytes = original.as_slice();
     let cloned = Bloom::from_slice(original_bytes).unwrap();
-    let cloned_bytes = cloned.to_bytes();
+    let cloned_bytes = cloned.as_slice().to_vec();
     assert_eq!(original_bytes, cloned_bytes);
     assert!(original.check(&k));
     assert!(cloned.check(&k));
@@ -84,7 +84,7 @@ fn bloom_test_check_via_from_bytes() {
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
 
-    let loaded = Bloom::from_bytes(bloom.to_bytes()).unwrap();
+    let loaded = Bloom::from_bytes(bloom.as_slice().to_vec()).unwrap();
     assert!(loaded.check(key));
     assert!(!loaded.check(b"not-in-filter!"));
 }
@@ -186,7 +186,7 @@ fn bloom_test_mmap_persist_and_reload() {
 
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
-    fs::write(&path, bloom.to_bytes()).unwrap();
+    fs::write(&path, bloom.as_slice().to_vec()).unwrap();
 
     let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
     assert!(ro.check(key));
@@ -205,7 +205,7 @@ fn bloom_test_mmap_load_serialized_filter() {
 
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
-    let serialized = bloom.to_bytes();
+    let serialized = bloom.as_slice().to_vec();
     fs::write(&path, &serialized).unwrap();
 
     let mapped: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
@@ -237,7 +237,7 @@ fn bloom_test_mmap_is_prot_read() {
     // Create and populate a filter, write to file.
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
-    fs::write(&path, bloom.to_bytes()).unwrap();
+    fs::write(&path, bloom.as_slice().to_vec()).unwrap();
 
     // Open as read-only mmap and verify the mapping flags via /proc/self/maps.
     let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
