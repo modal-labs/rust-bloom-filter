@@ -1,3 +1,6 @@
+// (C)opyleft 2013-2024 Frank Denis
+// Licensed under the ICS license (https://opensource.org/licenses/ISC)
+
 use std::convert::TryFrom;
 use std::marker::PhantomData;
 
