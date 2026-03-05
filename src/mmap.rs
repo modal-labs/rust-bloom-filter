@@ -9,6 +9,9 @@ use memmap2::{Mmap, MmapOptions};
 
 use crate::Bloom;
 
+// This newtype wraps `memmap2::Mmap` so that the third-party type
+// does not appear in the public API.
+
 /// Read-only memory-mapped storage.
 ///
 /// Mapped with `PROT_READ | MAP_SHARED`. Multiple mappings of the same
