@@ -48,39 +48,19 @@ bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
 ```rust,ignore
-use bloomfilter::Bloom;
+use bloomfilter::{Bloom, MmapStorage, OwnedStorage};
 
 let seed = [7u8; 32];
-let mut path = std::env::temp_dir();
-path.push(format!("bloomfilter-mmap-example-{}.bin", std::process::id()));
-let mut bloom = Bloom::new_mmap_with_seed(&path, 4096, 10000, &seed).unwrap();
+let path = std::env::temp_dir().join("bloomfilter-mmap-example.bin");
 
+// Create a filter in memory, populate it, and write to disk.
+let mut bloom = Bloom::new_with_seed(4096, 10000, &seed).unwrap();
 bloom.set(&1234);
-bloom.flush().unwrap(); // no-op for in-memory filters, fsync-like for mmap
+std::fs::write(&path, bloom.as_slice()).unwrap();
 
-let reopened = Bloom::from_mmap_path(&path).unwrap();
-assert!(reopened.check(&1234));
-std::fs::remove_file(path).ok();
-```
-
-Memory-mapped loading is compatible with filters serialized the traditional
-way (without mmap):
-
-```rust,ignore
-use bloomfilter::Bloom;
-
-let seed = [8u8; 32];
-let mut path = std::env::temp_dir();
-path.push(format!(
-    "bloomfilter-mmap-compat-example-{}.bin",
-    std::process::id()
-));
-
-let mut plain = Bloom::new_with_seed(4096, 10000, &seed).unwrap();
-plain.set(&1234);
-std::fs::write(&path, plain.as_slice()).unwrap();
-
-let mapped = Bloom::from_mmap_path(&path).unwrap();
+// Reopen with a read-only memory map (PROT_READ | MAP_SHARED).
+let mapped: Bloom<i32, MmapStorage> =
+    Bloom::from_storage(MmapStorage::from_path(&path).unwrap()).unwrap();
 assert!(mapped.check(&1234));
 std::fs::remove_file(path).ok();
 ```

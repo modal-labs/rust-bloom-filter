@@ -6,8 +6,7 @@ use std::marker::PhantomData;
 use getrandom::getrandom;
 
 use crate::header::{HEADER_SIZE, VERSION};
-use crate::Bloom;
-use super::{Storage, StorageMut};
+use crate::{Bloom, Storage, StorageMut};
 
 /// Heap-allocated storage. This is the default storage for [`Bloom`](crate::Bloom).
 pub struct OwnedStorage(pub(crate) Vec<u8>);

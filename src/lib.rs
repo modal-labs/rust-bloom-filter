@@ -8,12 +8,27 @@
 
 mod hash;
 mod header;
-pub mod storage;
-
-pub use storage::{OwnedStorage, Storage, StorageMut};
+mod owned;
 
 #[cfg(feature = "mmap")]
-pub use storage::MmapStorage;
+mod mmap;
+
+pub use owned::OwnedStorage;
+
+#[cfg(feature = "mmap")]
+pub use mmap::MmapStorage;
+
+/// Trait for bloom filter storage backends.
+pub trait Storage {
+    /// View the raw bytes (header + bitmap).
+    fn bytes(&self) -> &[u8];
+}
+
+/// Trait for mutable bloom filter storage backends.
+pub trait StorageMut: Storage {
+    /// View the raw bytes mutably.
+    fn bytes_mut(&mut self) -> &mut [u8];
+}
 
 use header::HEADER_SIZE;
 

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use memmap2::{Mmap, MmapOptions};
 
-use super::Storage;
+use crate::Storage;
 
 /// Read-only memory-mapped storage.
 ///

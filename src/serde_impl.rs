@@ -24,7 +24,7 @@ impl<T: ?Sized> Visitor<'_> for BloomVisitor<T> {
     type Value = Bloom<T, OwnedStorage>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Blom filter")
+        formatter.write_str("Bloom filter")
     }
 
     fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>

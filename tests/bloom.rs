@@ -95,6 +95,37 @@ fn bloom_test_check_via_from_bytes() {
 }
 
 #[test]
+fn bloom_test_len_and_k_num() {
+    let seed = [1u8; 32];
+    let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    assert_eq!(bloom.len(), 64 * 8);
+    assert!(bloom.number_of_hash_functions() >= 1);
+}
+
+#[test]
+fn bloom_test_seed_roundtrip() {
+    let seed = [99u8; 32];
+    let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    assert_eq!(bloom.seed(), seed);
+}
+
+#[test]
+fn bloom_test_is_empty_and_fill() {
+    let seed = [2u8; 32];
+    let mut bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    assert!(bloom.is_empty());
+
+    bloom.set(b"hello");
+    assert!(!bloom.is_empty());
+
+    bloom.fill();
+    assert!(bloom.check(b"anything"));
+
+    bloom.clear();
+    assert!(bloom.is_empty());
+}
+
+#[test]
 #[cfg(feature = "mmap")]
 fn bloom_test_mmap_persist_and_reload() {
     let path = unique_temp_path("persist-and-reload");
