@@ -6,8 +6,6 @@
 #![deny(unsafe_code)]
 #![allow(clippy::unreadable_literal, clippy::bool_comparison)]
 
-mod header;
-
 #[cfg(feature = "mmap")]
 mod mmap;
 
@@ -24,7 +22,8 @@ use getrandom::getrandom;
 
 use siphasher::sip::SipHasher13;
 
-use header::{HEADER_SIZE, VERSION};
+const VERSION: u8 = 1;
+const HEADER_SIZE: usize = 1 + 8 + 4 + 32;
 
 #[cfg(feature = "mmap")]
 pub use mmap::MmapStorage;
@@ -272,6 +271,13 @@ impl<T: ?Sized, S: Clone> Clone for Bloom<T, S> {
 
 // --- Vec<u8> storage (heap-allocated) ---
 
+fn write_header(buf: &mut [u8], len_bytes: u64, k_num: u32, seed: &[u8; 32]) {
+    buf[0] = VERSION;
+    buf[1..][0..8].copy_from_slice(&len_bytes.to_le_bytes());
+    buf[9..][0..4].copy_from_slice(&k_num.to_le_bytes());
+    buf[13..][0..32].copy_from_slice(seed);
+}
+
 impl<T: ?Sized> From<Bloom<T, Vec<u8>>> for Vec<u8> {
     fn from(bloom: Bloom<T, Vec<u8>>) -> Vec<u8> {
         bloom.storage
@@ -293,11 +299,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
         let bitmap_size = bitmap_size.get();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
         let mut storage = vec![0; HEADER_SIZE + bitmap_size];
-        let header = &mut storage[0..HEADER_SIZE];
-        header::set_version(header, VERSION);
-        header::set_len_bytes(header, bitmap_size as u64);
-        header::set_k_num(header, k_num);
-        header::set_seed(header, seed);
+        write_header(&mut storage[..HEADER_SIZE], bitmap_size as u64, k_num, seed);
         Self {
             storage,
             bitmap_bits,
