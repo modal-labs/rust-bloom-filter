@@ -1,4 +1,4 @@
-use crate::bitmap::{BITMAP_HEADER_SIZE, VERSION};
+use crate::header::{HEADER_SIZE, VERSION};
 use super::{Sealed, Storage};
 
 /// Heap-allocated storage. This is the default storage for [`Bloom`](crate::Bloom).
@@ -17,11 +17,11 @@ impl Storage for OwnedStorage {
 
 impl OwnedStorage {
     pub(crate) fn new(len_bytes: usize) -> Self {
-        let mut bytes = vec![0; BITMAP_HEADER_SIZE + len_bytes];
-        let header = &mut bytes[0..BITMAP_HEADER_SIZE];
-        crate::bitmap::set_version(header, VERSION);
-        crate::bitmap::set_len_bytes(header, len_bytes as u64);
-        crate::bitmap::set_k_num(header, 0);
+        let mut bytes = vec![0; HEADER_SIZE + len_bytes];
+        let header = &mut bytes[0..HEADER_SIZE];
+        crate::header::set_version(header, VERSION);
+        crate::header::set_len_bytes(header, len_bytes as u64);
+        crate::header::set_k_num(header, 0);
         Self(bytes)
     }
 

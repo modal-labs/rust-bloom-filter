@@ -6,8 +6,8 @@
 #![deny(unsafe_code)]
 #![allow(clippy::unreadable_literal, clippy::bool_comparison)]
 
-mod bitmap;
 mod hash;
+mod header;
 pub mod storage;
 
 pub use storage::{OwnedStorage, Storage};
@@ -15,7 +15,7 @@ pub use storage::{OwnedStorage, Storage};
 #[cfg(feature = "mmap")]
 pub use storage::MmapStorage;
 
-use bitmap::BITMAP_HEADER_SIZE;
+use header::HEADER_SIZE;
 
 use std::cmp;
 use std::convert::TryFrom;
@@ -44,22 +44,14 @@ pub mod reexports {
 /// Bloom filter structure, generic over storage backend.
 ///
 /// The default storage is [`OwnedStorage`] (heap-allocated).
-/// Use [`MmapStorage`] for read-only memory-mapped files
-/// (see [`ReadOnlyBloom`]).
-pub struct Bloom<T: ?Sized, S = OwnedStorage> {
+/// Use [`MmapStorage`] for read-only memory-mapped files.
+pub struct Bloom<T: ?Sized, S> {
     storage: S,
     bitmap_bits: u64,
     k_num: u32,
     sips: [SipHasher13; 2],
     _phantom: PhantomData<T>,
 }
-
-/// A read-only bloom filter backed by a `PROT_READ` memory-mapped file.
-///
-/// This is a type alias for `Bloom<T, MmapStorage>`.
-/// It has no mutating methods — only [`check`](Bloom::check) and introspection.
-#[cfg(feature = "mmap")]
-pub type ReadOnlyBloom<T> = Bloom<T, MmapStorage>;
 
 // --- Debug ---
 
@@ -138,13 +130,13 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
     where
         T: Hash,
     {
-        let bits = &self.storage.bytes()[BITMAP_HEADER_SIZE..];
+        let bits = &self.storage.bytes()[HEADER_SIZE..];
         hash::check(&self.sips, bits, self.bitmap_bits, self.k_num, item)
     }
 
     /// Test if there are no elements in the set.
     pub fn is_empty(&self) -> bool {
-        self.storage.bytes()[BITMAP_HEADER_SIZE..]
+        self.storage.bytes()[HEADER_SIZE..]
             .iter()
             .all(|&b| b == 0)
     }
@@ -165,7 +157,7 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
     }
 
     fn from_raw_storage(storage: S) -> Result<Self, &'static str> {
-        let (bitmap_bits, k_num, sips) = hash::parse_header(storage.bytes())?;
+        let (bitmap_bits, k_num, sips) = header::parse(storage.bytes())?;
         Ok(Self {
             storage,
             bitmap_bits,
@@ -178,7 +170,7 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
 
 // --- Write methods + constructors (OwnedStorage) ---
 
-impl<T: ?Sized> Bloom<T> {
+impl<T: ?Sized> Bloom<T, OwnedStorage> {
     /// Record the presence of an item.
     pub fn set(&mut self, item: &T)
     where
@@ -188,7 +180,7 @@ impl<T: ?Sized> Bloom<T> {
         for k_i in 0..self.k_num {
             let bit_offset =
                 (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[BITMAP_HEADER_SIZE..];
+            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             bits[byte_offset] |= 1 << bit_shift;
@@ -205,7 +197,7 @@ impl<T: ?Sized> Bloom<T> {
         for k_i in 0..self.k_num {
             let bit_offset =
                 (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[BITMAP_HEADER_SIZE..];
+            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             if (bits[byte_offset] & (1 << bit_shift)) == 0 {
@@ -218,14 +210,14 @@ impl<T: ?Sized> Bloom<T> {
 
     /// Clear all of the bits in the filter, removing all keys from the set.
     pub fn clear(&mut self) {
-        for byte in self.storage.bytes_mut()[BITMAP_HEADER_SIZE..].iter_mut() {
+        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
             *byte = 0;
         }
     }
 
     /// Set all of the bits in the filter, making it appear like every key is in the set.
     pub fn fill(&mut self) {
-        for byte in self.storage.bytes_mut()[BITMAP_HEADER_SIZE..].iter_mut() {
+        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
             *byte = !0;
         }
     }
@@ -238,9 +230,9 @@ impl<T: ?Sized> Bloom<T> {
 
     fn sync(&mut self) {
         let seed = self.seed();
-        let header = &mut self.storage.bytes_mut()[0..BITMAP_HEADER_SIZE];
-        bitmap::set_k_num(header, self.k_num);
-        bitmap::set_seed(header, &seed);
+        let header = &mut self.storage.bytes_mut()[0..HEADER_SIZE];
+        header::set_k_num(header, self.k_num);
+        header::set_seed(header, &seed);
     }
 
     /// Create a new bloom filter structure.
@@ -259,7 +251,7 @@ impl<T: ?Sized> Bloom<T> {
             .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
         let storage = OwnedStorage::new(bitmap_size);
-        let sips = hash::sips_from_seed(seed);
+        let sips = header::sips_from_seed(seed);
         let mut res = Self {
             storage,
             bitmap_bits,
@@ -321,8 +313,8 @@ impl<T: ?Sized> Bloom<T> {
         let new_bytes = f(previous_bytes);
         assert_eq!(previous_len, new_bytes.len());
         assert_eq!(
-            bitmap::get_version(&new_bytes[0..BITMAP_HEADER_SIZE]),
-            bitmap::VERSION,
+            header::get_version(&new_bytes[0..HEADER_SIZE]),
+            header::VERSION,
         );
         Self {
             storage: OwnedStorage(new_bytes),
