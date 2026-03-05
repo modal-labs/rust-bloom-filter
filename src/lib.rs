@@ -9,6 +9,7 @@
 mod bitmap;
 use bitmap::*;
 
+mod hash;
 mod readonly;
 pub use readonly::ReadOnlyBloom;
 
@@ -18,7 +19,7 @@ use std::f64;
 use std::fmt::{self, Debug};
 #[cfg(feature = "mmap")]
 use std::fs::{File, OpenOptions};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
 #[cfg(feature = "mmap")]
@@ -360,17 +361,8 @@ impl<T: ?Sized> Bloom<T> {
         })
     }
 
-    #[inline]
-    fn sip_new(key: &[u8; 16]) -> SipHasher13 {
-        SipHasher13::new_with_key(key)
-    }
-
     fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
-        let mut k1 = [0u8; 16];
-        let mut k2 = [0u8; 16];
-        k1.copy_from_slice(&seed[0..16]);
-        k2.copy_from_slice(&seed[16..32]);
-        [Self::sip_new(&k1), Self::sip_new(&k2)]
+        hash::sips_from_seed(seed)
     }
 
     fn sync(&mut self) {
@@ -392,16 +384,7 @@ impl<T: ?Sized> Bloom<T> {
     where
         T: Hash,
     {
-        if k_i < 2 {
-            let sip = &mut self.sips[k_i as usize].clone();
-            item.hash(sip);
-            let hash = sip.finish();
-            hashes[k_i as usize] = hash;
-            hash
-        } else {
-            (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
-                % 0xFFFF_FFFF_FFFF_FFC5u64 //largest u64 prime
-        }
+        hash::bloom_hash(&self.sips, hashes, item, k_i)
     }
 }
 

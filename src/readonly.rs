@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use std::fmt::{self, Debug};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 #[cfg(feature = "mmap")]
 use std::io;
 use std::marker::PhantomData;
@@ -15,6 +15,7 @@ use std::path::Path;
 use siphasher::sip::SipHasher13;
 
 use crate::bitmap::{BitMap, BITMAP_HEADER_SIZE};
+use crate::hash;
 
 enum Storage {
     Owned(Vec<u8>),
@@ -74,7 +75,7 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
         let header = &bytes[0..BITMAP_HEADER_SIZE];
         let k_num = BitMap::get_k_num(header);
         let seed = BitMap::get_seed(header);
-        let sips = Self::sips_from_seed(&seed);
+        let sips = hash::sips_from_seed(&seed);
         let bitmap_bits = u64::try_from(bytes.len() - BITMAP_HEADER_SIZE)
             .unwrap()
             .checked_mul(8)
@@ -130,7 +131,7 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (Self::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             if (bits[byte_offset] & (1 << bit_shift)) == 0 {
@@ -167,30 +168,4 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
             .all(|&b| b == 0)
     }
 
-    fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
-        let mut k1 = [0u8; 16];
-        let mut k2 = [0u8; 16];
-        k1.copy_from_slice(&seed[0..16]);
-        k2.copy_from_slice(&seed[16..32]);
-        [
-            SipHasher13::new_with_key(&k1),
-            SipHasher13::new_with_key(&k2),
-        ]
-    }
-
-    fn bloom_hash(sips: &[SipHasher13; 2], hashes: &mut [u64; 2], item: &T, k_i: u32) -> u64
-    where
-        T: Hash,
-    {
-        if k_i < 2 {
-            let mut sip = sips[k_i as usize].clone();
-            item.hash(&mut sip);
-            let hash = sip.finish();
-            hashes[k_i as usize] = hash;
-            hash
-        } else {
-            (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
-                % 0xFFFF_FFFF_FFFF_FFC5u64
-        }
-    }
 }
