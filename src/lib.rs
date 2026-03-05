@@ -45,11 +45,11 @@ pub mod reexports {
 /// Use `Bloom<T, Vec<u8>>` for heap-allocated filters, or [`MmapBloom`] for
 /// read-only memory-mapped files (requires the `mmap` feature).
 pub struct Bloom<T: ?Sized, S> {
-    pub(crate) storage: S,
-    pub(crate) bitmap_bits: u64,
-    pub(crate) k_num: u32,
-    pub(crate) sips: [SipHasher13; 2],
-    pub(crate) _phantom: PhantomData<T>,
+    storage: S,
+    bitmap_bits: u64,
+    k_num: u32,
+    sips: [SipHasher13; 2],
+    _phantom: PhantomData<T>,
 }
 
 // --- Debug ---
@@ -230,6 +230,12 @@ impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
     }
 }
 
+impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
+    fn clone(&self) -> Self {
+        Self::from_storage(self.storage.clone()).unwrap()
+    }
+}
+
 // --- Vec<u8> storage (heap-allocated) ---
 
 fn new_storage(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Vec<u8> {
@@ -240,12 +246,6 @@ fn new_storage(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Vec<u8> {
     header::set_k_num(header, k_num);
     header::set_seed(header, seed);
     bytes
-}
-
-impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
-    fn clone(&self) -> Self {
-        Self::from_storage(self.storage.clone()).unwrap()
-    }
 }
 
 impl<T: ?Sized> Bloom<T, Vec<u8>> {
