@@ -227,21 +227,6 @@ fn bloom_test_mmap_rejects_invalid_file() {
     fs::remove_file(path).unwrap();
 }
 
-/// Parse /proc/self/maps to find the permission flags for a given file path.
-/// Returns entries like "r--p" (read-only private) or "r--s" (read-only shared).
-#[cfg(all(feature = "mmap", target_os = "linux"))]
-fn mmap_perms_for_path(path: &std::path::Path) -> Vec<String> {
-    let canonical = path.canonicalize().unwrap();
-    let maps = fs::read_to_string("/proc/self/maps").unwrap();
-    maps.lines()
-        .filter(|line| line.ends_with(canonical.to_str().unwrap()))
-        .map(|line| {
-            // Format: "addr-addr perms offset dev inode pathname"
-            line.split_whitespace().nth(1).unwrap().to_string()
-        })
-        .collect()
-}
-
 #[test]
 #[cfg(all(feature = "mmap", target_os = "linux"))]
 fn bloom_test_mmap_is_prot_read() {
@@ -258,7 +243,16 @@ fn bloom_test_mmap_is_prot_read() {
     let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
     assert!(ro.check(key));
 
-    let perms = mmap_perms_for_path(&path);
+    let canonical = path.canonicalize().unwrap();
+    let maps = fs::read_to_string("/proc/self/maps").unwrap();
+    let perms: Vec<String> = maps
+        .lines()
+        .filter(|line| line.ends_with(canonical.to_str().unwrap()))
+        .map(|line| {
+            // Format: "addr-addr perms offset dev inode pathname"
+            line.split_whitespace().nth(1).unwrap().to_string()
+        })
+        .collect();
     assert!(!perms.is_empty(), "expected at least one mapping for {:?}", path);
     for perm in &perms {
         assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
