@@ -18,6 +18,10 @@ pub use owned::OwnedStorage;
 #[cfg(feature = "mmap")]
 pub use mmap::MmapStorage;
 
+/// A read-only bloom filter backed by a memory-mapped file.
+#[cfg(feature = "mmap")]
+pub type MmapBloom<T> = Bloom<T, MmapStorage>;
+
 /// Trait for bloom filter storage backends.
 pub trait Storage {
     /// View the raw bytes (header + bitmap).
