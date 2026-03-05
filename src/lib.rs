@@ -6,7 +6,6 @@
 #![deny(unsafe_code)]
 #![allow(clippy::unreadable_literal, clippy::bool_comparison)]
 
-mod hash;
 mod header;
 mod owned;
 
@@ -16,7 +15,7 @@ mod mmap;
 use std::cmp;
 use std::f64;
 use std::fmt::{self, Debug};
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use siphasher::sip::SipHasher13;
@@ -50,6 +49,35 @@ pub mod reexports {
     pub use siphasher;
     #[cfg(feature = "serde")]
     pub use siphasher::reexports::serde;
+}
+
+fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
+    let mut k1 = [0u8; 16];
+    let mut k2 = [0u8; 16];
+    k1.copy_from_slice(&seed[0..16]);
+    k2.copy_from_slice(&seed[16..32]);
+    [
+        SipHasher13::new_with_key(&k1),
+        SipHasher13::new_with_key(&k2),
+    ]
+}
+
+fn bloom_hash<T: Hash + ?Sized>(
+    sips: &[SipHasher13; 2],
+    hashes: &mut [u64; 2],
+    item: &T,
+    k_i: u32,
+) -> u64 {
+    if k_i < 2 {
+        let mut sip = sips[k_i as usize];
+        item.hash(&mut sip);
+        let hash = sip.finish();
+        hashes[k_i as usize] = hash;
+        hash
+    } else {
+        (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
+            % 0xFFFF_FFFF_FFFF_FFC5u64 // largest u64 prime
+    }
 }
 
 /// Bloom filter structure, generic over storage backend.
@@ -128,7 +156,17 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
         T: Hash,
     {
         let bits = &self.storage.bytes()[HEADER_SIZE..];
-        hash::check(&self.sips, bits, self.bitmap_bits, self.k_num, item)
+        let mut hashes = [0u64, 0u64];
+        for k_i in 0..self.k_num {
+            let bit_offset =
+                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+            let byte_offset = bit_offset / 8;
+            let bit_shift = bit_offset % 8;
+            if (bits[byte_offset] & (1 << bit_shift)) == 0 {
+                return false;
+            }
+        }
+        true
     }
 
     /// Test if there are no elements in the set.
@@ -149,7 +187,7 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
             storage,
             bitmap_bits,
             k_num,
-            sips: hash::sips_from_seed(&seed),
+            sips: sips_from_seed(&seed),
             _phantom: PhantomData,
         })
     }
@@ -166,7 +204,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
@@ -183,7 +221,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         let mut found = true;
         for k_i in 0..self.k_num {
             let bit_offset =
-                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
