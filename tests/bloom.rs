@@ -7,10 +7,15 @@ use bloomfilter::MmapBloom;
 use std::fs;
 #[cfg(feature = "mmap")]
 use std::io;
+use std::num::NonZeroUsize;
 #[cfg(feature = "mmap")]
 use std::path::PathBuf;
 #[cfg(feature = "mmap")]
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn nz(n: usize) -> NonZeroUsize {
+    NonZeroUsize::new(n).unwrap()
+}
 
 #[cfg(feature = "mmap")]
 fn unique_temp_path(test_name: &str) -> PathBuf {
@@ -29,7 +34,7 @@ fn unique_temp_path(test_name: &str) -> PathBuf {
 #[test]
 #[cfg(feature = "random")]
 fn bloom_test_set() {
-    let mut bloom = Bloom::new(10, 80).unwrap();
+    let mut bloom = Bloom::new(nz(10), nz(80)).unwrap();
     let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     assert!(!bloom.check(&k));
@@ -40,7 +45,7 @@ fn bloom_test_set() {
 #[test]
 #[cfg(feature = "random")]
 fn bloom_test_check_and_set() {
-    let mut bloom = Bloom::new(10, 80).unwrap();
+    let mut bloom = Bloom::new(nz(10), nz(80)).unwrap();
     let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     assert!(!bloom.check_and_set(&k));
@@ -50,7 +55,7 @@ fn bloom_test_check_and_set() {
 #[test]
 #[cfg(feature = "random")]
 fn bloom_test_clear() {
-    let mut bloom = Bloom::new(10, 80).unwrap();
+    let mut bloom = Bloom::new(nz(10), nz(80)).unwrap();
     let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     bloom.set(&k);
@@ -62,7 +67,7 @@ fn bloom_test_clear() {
 #[test]
 #[cfg(feature = "random")]
 fn bloom_test_load() {
-    let mut original = Bloom::new(10, 80).unwrap();
+    let mut original = Bloom::new(nz(10), nz(80)).unwrap();
     let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     original.set(&k);
@@ -81,24 +86,12 @@ fn bloom_test_check_via_from_bytes() {
     let seed = [12u8; 32];
     let key = b"from-bytes-key";
 
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::new_with_seed(nz(64), nz(80), &seed).unwrap();
     bloom.set(key);
 
     let loaded = Bloom::from_bytes(bloom.as_slice().to_vec()).unwrap();
     assert!(loaded.check(key));
     assert!(!loaded.check(b"not-in-filter!"));
-}
-
-#[test]
-fn bloom_test_rejects_zero_bitmap_size() {
-    let seed = [1u8; 32];
-    assert!(Bloom::<[u8], Vec<u8>>::new_with_seed(0, 80, &seed).is_err());
-}
-
-#[test]
-fn bloom_test_rejects_zero_items_count() {
-    let seed = [1u8; 32];
-    assert!(Bloom::<[u8], Vec<u8>>::new_with_seed(64, 0, &seed).is_err());
 }
 
 #[test]
@@ -115,7 +108,7 @@ fn bloom_test_rejects_empty_bitmap_in_serialized_data() {
 #[test]
 fn bloom_test_len_and_k_num() {
     let seed = [1u8; 32];
-    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
+    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(nz(64), nz(80), &seed).unwrap();
     assert_eq!(bloom.len(), 64 * 8);
     assert!(bloom.number_of_hash_functions() >= 1);
 }
@@ -123,7 +116,7 @@ fn bloom_test_len_and_k_num() {
 #[test]
 fn bloom_test_seed_roundtrip() {
     let seed = [99u8; 32];
-    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
+    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(nz(64), nz(80), &seed).unwrap();
     assert_eq!(bloom.seed(), seed);
 }
 
@@ -154,7 +147,7 @@ fn bloom_test_golden_format_compatibility() {
 #[test]
 fn bloom_test_golden_produces_identical_bytes() {
     let seed = [42u8; 32];
-    let mut bloom: Bloom<str, Vec<u8>> = Bloom::new_with_seed(32, 100, &seed).unwrap();
+    let mut bloom: Bloom<str, Vec<u8>> = Bloom::new_with_seed(nz(32), nz(100), &seed).unwrap();
     bloom.set("hello");
     bloom.set("world");
     bloom.set("bloom filter");
@@ -164,7 +157,7 @@ fn bloom_test_golden_produces_identical_bytes() {
 #[test]
 fn bloom_test_is_empty_and_fill() {
     let seed = [2u8; 32];
-    let mut bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(nz(64), nz(80), &seed).unwrap();
     assert!(bloom.is_empty());
 
     bloom.set(b"hello");
@@ -184,7 +177,7 @@ fn bloom_test_mmap_persist_and_reload() {
     let seed = [7u8; 32];
     let key = b"persistent-key";
 
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::new_with_seed(nz(64), nz(80), &seed).unwrap();
     bloom.set(key);
     fs::write(&path, bloom.as_slice()).unwrap();
 
@@ -203,7 +196,7 @@ fn bloom_test_mmap_load_serialized_filter() {
     let seed = [5u8; 32];
     let key = b"serialized-key";
 
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::new_with_seed(nz(64), nz(80), &seed).unwrap();
     bloom.set(key);
     let serialized = bloom.as_slice().to_vec();
     fs::write(&path, &serialized).unwrap();
@@ -235,7 +228,7 @@ fn bloom_test_mmap_is_prot_read() {
     let key = b"prot-test-key";
 
     // Create and populate a filter, write to file.
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::new_with_seed(nz(64), nz(80), &seed).unwrap();
     bloom.set(key);
     fs::write(&path, bloom.as_slice()).unwrap();
 

@@ -2,6 +2,7 @@
 // Licensed under the ICS license (https://opensource.org/licenses/ISC)
 
 use std::convert::TryInto;
+use std::num::NonZeroU64;
 
 pub const VERSION: u8 = 1;
 pub const HEADER_SIZE: usize = 1 + 8 + 4 + 32;
@@ -29,7 +30,7 @@ pub(crate) fn set_seed(header: &mut [u8], seed: &[u8; 32]) {
 /// Validate a serialized bloom filter header and return its parameters.
 ///
 /// On success returns `(bitmap_bits, k_num, seed)`.
-pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [u8; 32]), &'static str> {
+pub(crate) fn parse(bytes: &[u8]) -> Result<(NonZeroU64, u32, [u8; 32]), &'static str> {
     if bytes.len() < HEADER_SIZE {
         return Err("Invalid size");
     }
@@ -55,7 +56,8 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [u8; 32]), &'static str> 
 
     let mut seed = [0u8; 32];
     seed.copy_from_slice(&header[13..][0..32]);
-    let bitmap_bits = (bits.len() as u64).checked_mul(8).unwrap();
+    let bitmap_bits =
+        NonZeroU64::new((bits.len() as u64).checked_mul(8).unwrap()).unwrap();
 
     Ok((bitmap_bits, k_num, seed))
 }

@@ -17,6 +17,7 @@ use std::f64;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::num::{NonZeroU64, NonZeroUsize};
 
 #[cfg(feature = "random")]
 use getrandom::getrandom;
@@ -46,7 +47,7 @@ pub mod reexports {
 /// read-only memory-mapped files (requires the `mmap` feature).
 pub struct Bloom<T: ?Sized, S> {
     storage: S,
-    bitmap_bits: u64,
+    bitmap_bits: NonZeroU64,
     k_num: u32,
     sips: [SipHasher13; 2],
     _phantom: PhantomData<T>,
@@ -59,7 +60,7 @@ impl<T: ?Sized, S> Debug for Bloom<T, S> {
         write!(
             f,
             "Bloom filter with {} bits, {} hash functions and seed: {:?} ",
-            self.bitmap_bits,
+            self.bitmap_bits.get(),
             self.k_num,
             self.seed()
         )
@@ -71,7 +72,7 @@ impl<T: ?Sized, S> Debug for Bloom<T, S> {
 impl<T: ?Sized, S> Bloom<T, S> {
     /// Return the number of bits in the filter.
     pub fn len(&self) -> u64 {
-        self.bitmap_bits
+        self.bitmap_bits.get()
     }
 
     /// Return the number of hash functions used for `check` and `set`.
@@ -90,12 +91,12 @@ impl<T: ?Sized, S> Bloom<T, S> {
     /// Compute a recommended bitmap size for items_count items
     /// and a fp_p rate of false positives.
     /// fp_p obviously has to be within the ]0.0, 1.0[ range.
-    pub fn compute_bitmap_size(items_count: usize, fp_p: f64) -> usize {
-        assert!(items_count > 0);
+    pub fn compute_bitmap_size(items_count: NonZeroUsize, fp_p: f64) -> NonZeroUsize {
         assert!(fp_p > 0.0 && fp_p < 1.0);
         let log2 = f64::consts::LN_2;
         let log2_2 = log2 * log2;
-        ((items_count as f64) * f64::ln(fp_p) / (-8.0 * log2_2)).ceil() as usize
+        let size = ((items_count.get() as f64) * f64::ln(fp_p) / (-8.0 * log2_2)).ceil() as usize;
+        NonZeroUsize::new(size).expect("bitmap size must be at least 1 byte")
     }
 
     fn bloom_hash(&self, hashes: &mut [u64; 2], item: &T, k_i: u32) -> u64
@@ -114,9 +115,9 @@ impl<T: ?Sized, S> Bloom<T, S> {
         }
     }
 
-    fn optimal_k_num(bitmap_bits: u64, items_count: usize) -> u32 {
-        let m = bitmap_bits as f64;
-        let n = items_count as f64;
+    fn optimal_k_num(bitmap_bits: NonZeroU64, items_count: NonZeroUsize) -> u32 {
+        let m = bitmap_bits.get() as f64;
+        let n = items_count.get() as f64;
         let k_num = (m / n * f64::ln(2.0f64)).round() as u32;
         cmp::max(k_num, 1)
     }
@@ -135,7 +136,7 @@ impl<T: ?Sized, S: AsRef<[u8]>> Bloom<T, S> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits.get()) as usize;
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             if (bits[byte_offset] & (1 << bit_shift)) == 0 {
@@ -186,7 +187,7 @@ impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits.get()) as usize;
             let bits = &mut self.storage.as_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
@@ -203,7 +204,7 @@ impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
         let mut found = true;
         for k_i in 0..self.k_num {
             let bit_offset =
-                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits.get()) as usize;
             let bits = &mut self.storage.as_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
@@ -256,17 +257,18 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// memory. items_count is an estimation of the maximum number of items
     /// to store. seed is a random value used to generate the hash functions.
     pub fn new_with_seed(
-        bitmap_size: usize,
-        items_count: usize,
+        bitmap_size: NonZeroUsize,
+        items_count: NonZeroUsize,
         seed: &[u8; 32],
     ) -> Result<Self, &'static str> {
-        if bitmap_size == 0 || items_count == 0 {
-            return Err("bitmap_size and items_count must be greater than 0");
-        }
-        let bitmap_bits = u64::try_from(bitmap_size)
-            .unwrap()
-            .checked_mul(8u64)
-            .unwrap();
+        let bitmap_size = bitmap_size.get();
+        let bitmap_bits = NonZeroU64::new(
+            u64::try_from(bitmap_size)
+                .unwrap()
+                .checked_mul(8u64)
+                .unwrap(),
+        )
+        .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
         let mut storage = vec![0; HEADER_SIZE + bitmap_size];
         let header = &mut storage[0..HEADER_SIZE];
@@ -282,7 +284,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// memory. items_count is an estimation of the maximum number of items
     /// to store.
     #[cfg(feature = "random")]
-    pub fn new(bitmap_size: usize, items_count: usize) -> Result<Self, &'static str> {
+    pub fn new(bitmap_size: NonZeroUsize, items_count: NonZeroUsize) -> Result<Self, &'static str> {
         let mut seed = [0u8; 32];
         getrandom(&mut seed).map_err(|_| "Could not generate random seed")?;
         Self::new_with_seed(bitmap_size, items_count, &seed)
@@ -292,7 +294,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// items_count is an estimation of the maximum number of items to store.
     /// fp_p is the wanted rate of false positives, in ]0.0, 1.0[
     #[cfg(feature = "random")]
-    pub fn new_for_fp_rate(items_count: usize, fp_p: f64) -> Result<Self, &'static str> {
+    pub fn new_for_fp_rate(items_count: NonZeroUsize, fp_p: f64) -> Result<Self, &'static str> {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
         Self::new(bitmap_size, items_count)
     }
@@ -301,7 +303,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// items_count is an estimation of the maximum number of items to store.
     /// fp_p is the wanted rate of false positives, in ]0.0, 1.0[
     pub fn new_for_fp_rate_with_seed(
-        items_count: usize,
+        items_count: NonZeroUsize,
         fp_p: f64,
         seed: &[u8; 32],
     ) -> Result<Self, &'static str> {
