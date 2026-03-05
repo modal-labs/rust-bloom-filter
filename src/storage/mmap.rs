@@ -4,14 +4,12 @@ use std::path::Path;
 
 use memmap2::{Mmap, MmapOptions};
 
-use super::{Sealed, Storage};
+use super::Storage;
 
 /// Read-only memory-mapped storage.
 ///
 /// Mapped with `PROT_READ | MAP_SHARED` — the kernel prevents writes.
 pub struct MmapStorage(pub(crate) Mmap);
-
-impl Sealed for MmapStorage {}
 
 impl Storage for MmapStorage {
     fn bytes(&self) -> &[u8] {

@@ -7,12 +7,10 @@ use getrandom::getrandom;
 
 use crate::header::{HEADER_SIZE, VERSION};
 use crate::Bloom;
-use super::{Sealed, Storage, StorageMut};
+use super::{Storage, StorageMut};
 
 /// Heap-allocated storage. This is the default storage for [`Bloom`](crate::Bloom).
 pub struct OwnedStorage(pub(crate) Vec<u8>);
-
-impl Sealed for OwnedStorage {}
 
 impl Storage for OwnedStorage {
     fn bytes(&self) -> &[u8] {
