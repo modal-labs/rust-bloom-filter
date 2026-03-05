@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::io;
 
 #[cfg(feature = "mmap")]
-use memmap2::{MmapMut, MmapOptions};
+use memmap2::{Mmap, MmapMut, MmapOptions};
 #[cfg(feature = "mmap")]
 use std::fs::File;
 
@@ -15,6 +15,8 @@ enum BitMapStorage {
     Owned(Vec<u8>),
     #[cfg(feature = "mmap")]
     Mapped(MmapMut),
+    #[cfg(feature = "mmap")]
+    MappedReadOnly(Mmap),
 }
 
 #[derive(Debug)]
@@ -48,6 +50,8 @@ impl BitMap {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
             BitMapStorage::Mapped(mmap) => &mmap[..],
+            #[cfg(feature = "mmap")]
+            BitMapStorage::MappedReadOnly(mmap) => &mmap[..],
         }
     }
 
@@ -57,6 +61,10 @@ impl BitMap {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
             BitMapStorage::Mapped(mmap) => &mut mmap[..],
+            #[cfg(feature = "mmap")]
+            BitMapStorage::MappedReadOnly(_) => {
+                panic!("cannot mutate a read-only memory-mapped filter")
+            }
         }
     }
 
@@ -193,6 +201,22 @@ impl BitMap {
         unsafe { MmapOptions::new().map_mut(file) }
     }
 
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap(mmap: Mmap) -> Result<Self, &'static str> {
+        Self::validate_layout(&mmap)?;
+        Ok(Self {
+            header_and_bits: BitMapStorage::MappedReadOnly(mmap),
+        })
+    }
+
+    #[cfg(feature = "mmap")]
+    #[allow(unsafe_code)]
+    pub fn map_file(file: &File) -> io::Result<Mmap> {
+        // SAFETY: The returned mapping owns its lifetime independently of `file`,
+        // and we only expose it through safe slice APIs in this module.
+        unsafe { MmapOptions::new().map(file) }
+    }
+
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
         self.bytes()
@@ -204,6 +228,8 @@ impl BitMap {
             BitMapStorage::Owned(bytes) => bytes,
             #[cfg(feature = "mmap")]
             BitMapStorage::Mapped(mmap) => mmap[..].to_vec(),
+            #[cfg(feature = "mmap")]
+            BitMapStorage::MappedReadOnly(mmap) => mmap[..].to_vec(),
         }
     }
 
@@ -267,6 +293,8 @@ impl BitMap {
             BitMapStorage::Owned(_) => Ok(()),
             #[cfg(feature = "mmap")]
             BitMapStorage::Mapped(mmap) => mmap.flush(),
+            #[cfg(feature = "mmap")]
+            BitMapStorage::MappedReadOnly(_) => Ok(()),
         }
     }
 }

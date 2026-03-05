@@ -282,6 +282,26 @@ impl<T: ?Sized> Bloom<T> {
         Self::from_mmap_file(&file)
     }
 
+    /// Create a read-only bloom filter from a memory-mapped file.
+    /// The returned filter supports `check` but will panic on mutation
+    /// (`set`, `clear`, `fill`, `check_and_set`).
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_file_readonly(file: &File) -> io::Result<Self> {
+        let mmap = BitMap::map_file(file)?;
+        let bitmap = BitMap::from_mmap(mmap)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        Self::from_bitmap(bitmap).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+
+    /// Create a read-only bloom filter from a memory-mapped file path.
+    /// The returned filter supports `check` but will panic on mutation
+    /// (`set`, `clear`, `fill`, `check_and_set`).
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_path_readonly<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).open(path)?;
+        Self::from_mmap_file_readonly(&file)
+    }
+
     /// Serialize the bloom filter to an opaque byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.bitmap.to_bytes()

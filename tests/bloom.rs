@@ -125,6 +125,65 @@ fn bloom_test_mmap_load_serialized_filter() {
 
 #[test]
 #[cfg(feature = "mmap")]
+fn bloom_test_mmap_readonly_check() {
+    let path = unique_temp_path("readonly-check");
+    let seed = [9u8; 32];
+    let key = b"readonly-key";
+
+    {
+        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
+        bloom.set(key);
+        bloom.flush().unwrap();
+    }
+
+    {
+        let bloom = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
+        assert!(bloom.check(key));
+        assert!(!bloom.check(b"missing-key"));
+    }
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[cfg(feature = "mmap")]
+#[should_panic(expected = "cannot mutate a read-only memory-mapped filter")]
+fn bloom_test_mmap_readonly_panics_on_set() {
+    let path = unique_temp_path("readonly-set");
+    let seed = [10u8; 32];
+
+    {
+        let bloom = Bloom::<[u8]>::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
+        bloom.flush().unwrap();
+    }
+
+    let mut bloom = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
+    bloom.set(b"boom"); // should panic
+
+    // cleanup won't run due to panic, but temp files are fine
+}
+
+#[test]
+#[cfg(feature = "mmap")]
+fn bloom_test_mmap_readonly_load_serialized_filter() {
+    let path = unique_temp_path("readonly-serialized");
+    let seed = [11u8; 32];
+    let key = b"serialized-readonly";
+
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+    let serialized = bloom.to_bytes();
+    fs::write(&path, &serialized).unwrap();
+
+    let mapped = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
+    assert!(mapped.check(key));
+    assert_eq!(mapped.to_bytes(), serialized);
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[cfg(feature = "mmap")]
 fn bloom_test_mmap_rejects_invalid_file() {
     let path = unique_temp_path("invalid");
     fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
