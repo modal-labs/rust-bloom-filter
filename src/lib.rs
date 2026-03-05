@@ -238,15 +238,16 @@ impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
 
 // --- Vec<u8> storage (heap-allocated) ---
 
+impl<T: ?Sized> From<Bloom<T, Vec<u8>>> for Vec<u8> {
+    fn from(bloom: Bloom<T, Vec<u8>>) -> Vec<u8> {
+        bloom.storage
+    }
+}
+
 impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// Serialize the bloom filter to an opaque byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.storage.clone()
-    }
-
-    /// Transform the bloom filter into a byte vector.
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.storage
     }
 
     /// Create a new bloom filter structure.
