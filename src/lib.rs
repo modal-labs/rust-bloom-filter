@@ -242,7 +242,7 @@ fn new_storage(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Vec<u8> {
     bytes
 }
 
-impl<T: ?Sized> Clone for Bloom<T, Vec<u8>> {
+impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
     fn clone(&self) -> Self {
         Self::from_storage(self.storage.clone()).unwrap()
     }
