@@ -255,7 +255,7 @@ fn bloom_test_mmap_is_prot_read() {
         .unwrap()
         .to_string();
     assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
-    assert_eq!(&perm[3..], "p", "expected private mapping, got {perm}");
+    assert_eq!(&perm[3..], "s", "expected shared mapping, got {perm}");
 
     drop(ro);
     fs::remove_file(path).unwrap();
