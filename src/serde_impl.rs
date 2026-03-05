@@ -5,7 +5,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::reexports::serde;
-use crate::{Bloom, OwnedStorage};
+use crate::Bloom;
 
 use serde::{
     de::{Error as DeError, Visitor},
@@ -13,7 +13,7 @@ use serde::{
 };
 
 pub fn serialize<Ser: Serializer, T: ?Sized>(
-    bloom: &Bloom<T, OwnedStorage>,
+    bloom: &Bloom<T, Vec<u8>>,
     serializer: Ser,
 ) -> Result<Ser::Ok, Ser::Error> {
     serializer.serialize_bytes(bloom.as_slice())
@@ -24,7 +24,7 @@ struct BloomVisitor<T: ?Sized> {
 }
 
 impl<T: ?Sized> Visitor<'_> for BloomVisitor<T> {
-    type Value = Bloom<T, OwnedStorage>;
+    type Value = Bloom<T, Vec<u8>>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("Bloom filter")
@@ -47,7 +47,7 @@ impl<T: ?Sized> Visitor<'_> for BloomVisitor<T> {
 
 pub fn deserialize<'de, D: Deserializer<'de>, T: ?Sized>(
     deserializer: D,
-) -> Result<Bloom<T, OwnedStorage>, D::Error> {
+) -> Result<Bloom<T, Vec<u8>>, D::Error> {
     deserializer.deserialize_bytes(BloomVisitor {
         _phantom: PhantomData,
     })

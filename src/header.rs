@@ -26,11 +26,6 @@ pub(crate) fn set_seed(header: &mut [u8], seed: &[u8; 32]) {
     header[13..][0..32].copy_from_slice(seed);
 }
 
-#[inline]
-pub(crate) fn get_version(header: &[u8]) -> u8 {
-    header[0]
-}
-
 /// Validate a serialized bloom filter header and return its parameters.
 ///
 /// On success returns `(bitmap_bits, k_num, seed)`.

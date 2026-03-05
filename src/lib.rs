@@ -22,8 +22,6 @@ use siphasher::sip::SipHasher13;
 
 use header::HEADER_SIZE;
 
-pub use owned::OwnedStorage;
-
 #[cfg(feature = "mmap")]
 pub use mmap::MmapStorage;
 
@@ -41,7 +39,7 @@ pub mod reexports {
 
 /// Bloom filter structure, generic over storage backend.
 ///
-/// Use [`OwnedStorage`] for heap-allocated filters, or [`MmapBloom`] for
+/// Use `Bloom<T, Vec<u8>>` for heap-allocated filters, or [`MmapBloom`] for
 /// read-only memory-mapped files (requires the `mmap` feature).
 pub struct Bloom<T: ?Sized, S> {
     pub(crate) storage: S,

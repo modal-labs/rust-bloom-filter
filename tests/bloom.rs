@@ -1,6 +1,6 @@
 #[cfg(feature = "random")]
 use bloomfilter::reexports::getrandom::getrandom;
-use bloomfilter::{Bloom, OwnedStorage};
+use bloomfilter::Bloom;
 #[cfg(feature = "mmap")]
 use bloomfilter::MmapBloom;
 #[cfg(feature = "mmap")]
@@ -92,13 +92,13 @@ fn bloom_test_check_via_from_bytes() {
 #[test]
 fn bloom_test_rejects_zero_bitmap_size() {
     let seed = [1u8; 32];
-    assert!(Bloom::<[u8], OwnedStorage>::new_with_seed(0, 80, &seed).is_err());
+    assert!(Bloom::<[u8], Vec<u8>>::new_with_seed(0, 80, &seed).is_err());
 }
 
 #[test]
 fn bloom_test_rejects_zero_items_count() {
     let seed = [1u8; 32];
-    assert!(Bloom::<[u8], OwnedStorage>::new_with_seed(64, 0, &seed).is_err());
+    assert!(Bloom::<[u8], Vec<u8>>::new_with_seed(64, 0, &seed).is_err());
 }
 
 #[test]
@@ -109,13 +109,13 @@ fn bloom_test_rejects_empty_bitmap_in_serialized_data() {
     // len_bytes = 0 (already zero)
     bytes[9..13].copy_from_slice(&1u32.to_le_bytes()); // k_num = 1
     // seed is all zeros (fine)
-    assert!(Bloom::<[u8], OwnedStorage>::from_bytes(bytes).is_err());
+    assert!(Bloom::<[u8], Vec<u8>>::from_bytes(bytes).is_err());
 }
 
 #[test]
 fn bloom_test_len_and_k_num() {
     let seed = [1u8; 32];
-    let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
     assert_eq!(bloom.len(), 64 * 8);
     assert!(bloom.number_of_hash_functions() >= 1);
 }
@@ -123,7 +123,7 @@ fn bloom_test_len_and_k_num() {
 #[test]
 fn bloom_test_seed_roundtrip() {
     let seed = [99u8; 32];
-    let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    let bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
     assert_eq!(bloom.seed(), seed);
 }
 
@@ -140,7 +140,7 @@ const GOLDEN_BYTES: [u8; 77] = [
 
 #[test]
 fn bloom_test_golden_format_compatibility() {
-    let bloom: Bloom<str, OwnedStorage> = Bloom::from_slice(&GOLDEN_BYTES).unwrap();
+    let bloom: Bloom<str, Vec<u8>> = Bloom::from_slice(&GOLDEN_BYTES).unwrap();
     assert_eq!(bloom.seed(), [42u8; 32]);
     assert_eq!(bloom.len(), 256);
     assert_eq!(bloom.number_of_hash_functions(), 2);
@@ -154,7 +154,7 @@ fn bloom_test_golden_format_compatibility() {
 #[test]
 fn bloom_test_golden_produces_identical_bytes() {
     let seed = [42u8; 32];
-    let mut bloom: Bloom<str, OwnedStorage> = Bloom::new_with_seed(32, 100, &seed).unwrap();
+    let mut bloom: Bloom<str, Vec<u8>> = Bloom::new_with_seed(32, 100, &seed).unwrap();
     bloom.set("hello");
     bloom.set("world");
     bloom.set("bloom filter");
@@ -164,7 +164,7 @@ fn bloom_test_golden_produces_identical_bytes() {
 #[test]
 fn bloom_test_is_empty_and_fill() {
     let seed = [2u8; 32];
-    let mut bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();
+    let mut bloom = Bloom::<[u8], Vec<u8>>::new_with_seed(64, 80, &seed).unwrap();
     assert!(bloom.is_empty());
 
     bloom.set(b"hello");
