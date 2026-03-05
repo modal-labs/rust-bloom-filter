@@ -232,7 +232,13 @@ impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
 
 impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
     fn clone(&self) -> Self {
-        Self::from_storage(self.storage.clone()).unwrap()
+        Self {
+            storage: self.storage.clone(),
+            bitmap_bits: self.bitmap_bits,
+            k_num: self.k_num,
+            sips: self.sips,
+            _phantom: PhantomData,
+        }
     }
 }
 
