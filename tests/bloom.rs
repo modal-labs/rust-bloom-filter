@@ -227,55 +227,6 @@ fn bloom_test_mmap_rejects_invalid_file() {
     fs::remove_file(path).unwrap();
 }
 
-#[test]
-#[cfg(feature = "mmap")]
-fn readonly_bloom_mmap_check() {
-    let path = unique_temp_path("readonly-check");
-    let seed = [9u8; 32];
-    let key = b"readonly-key";
-
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
-    bloom.set(key);
-    fs::write(&path, bloom.to_bytes()).unwrap();
-
-    let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
-    assert!(ro.check(key));
-    assert!(!ro.check(b"missing-key!"));
-
-    fs::remove_file(path).unwrap();
-}
-
-#[test]
-#[cfg(feature = "mmap")]
-fn readonly_bloom_mmap_load_serialized() {
-    let path = unique_temp_path("readonly-serialized");
-    let seed = [11u8; 32];
-    let key = b"serialized-ro";
-
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
-    bloom.set(key);
-    let serialized = bloom.to_bytes();
-    fs::write(&path, &serialized).unwrap();
-
-    let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
-    assert!(ro.check(key));
-    assert_eq!(ro.as_slice(), serialized);
-
-    fs::remove_file(path).unwrap();
-}
-
-#[test]
-#[cfg(feature = "mmap")]
-fn readonly_bloom_mmap_rejects_invalid_file() {
-    let path = unique_temp_path("readonly-invalid");
-    fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
-
-    let err = MmapBloom::<[u8]>::from_path(&path).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-
-    fs::remove_file(path).unwrap();
-}
-
 /// Parse /proc/self/maps to find the permission flags for a given file path.
 /// Returns entries like "r--p" (read-only private) or "r--s" (read-only shared).
 #[cfg(all(feature = "mmap", target_os = "linux"))]
@@ -293,7 +244,7 @@ fn mmap_perms_for_path(path: &std::path::Path) -> Vec<String> {
 
 #[test]
 #[cfg(all(feature = "mmap", target_os = "linux"))]
-fn readonly_bloom_mmap_is_prot_read() {
+fn bloom_test_mmap_is_prot_read() {
     let path = unique_temp_path("prot-read-check");
     let seed = [13u8; 32];
     let key = b"prot-test-key";
