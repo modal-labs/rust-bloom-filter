@@ -1,6 +1,7 @@
 #[cfg(feature = "random")]
 use bloomfilter::reexports::getrandom::getrandom;
 use bloomfilter::Bloom;
+use bloomfilter::ReadOnlyBloom;
 #[cfg(feature = "mmap")]
 use std::fs;
 #[cfg(feature = "mmap")]
@@ -130,6 +131,70 @@ fn bloom_test_mmap_rejects_invalid_file() {
     fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
 
     let err = Bloom::<[u8]>::from_mmap_path(&path).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[cfg(feature = "mmap")]
+fn readonly_bloom_mmap_check() {
+    let path = unique_temp_path("readonly-check");
+    let seed = [9u8; 32];
+    let key = b"readonly-key";
+
+    {
+        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
+        bloom.set(key);
+        bloom.flush().unwrap();
+    }
+
+    let bloom = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    assert!(bloom.check(key));
+    assert!(!bloom.check(b"missing-key!"));
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+#[cfg(feature = "mmap")]
+fn readonly_bloom_mmap_load_serialized() {
+    let path = unique_temp_path("readonly-serialized");
+    let seed = [11u8; 32];
+    let key = b"serialized-ro";
+
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+    let serialized = bloom.to_bytes();
+    fs::write(&path, &serialized).unwrap();
+
+    let ro = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    assert!(ro.check(key));
+    assert_eq!(ro.to_bytes(), serialized);
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn readonly_bloom_from_bytes() {
+    let seed = [12u8; 32];
+    let key = b"from-bytes-key";
+
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+
+    let ro = ReadOnlyBloom::from_bytes(bloom.to_bytes()).unwrap();
+    assert!(ro.check(key));
+    assert!(!ro.check(b"not-in-filter!"));
+}
+
+#[test]
+#[cfg(feature = "mmap")]
+fn readonly_bloom_mmap_rejects_invalid_file() {
+    let path = unique_temp_path("readonly-invalid");
+    fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
+
+    let err = ReadOnlyBloom::<[u8]>::from_mmap_path(&path).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 
     fs::remove_file(path).unwrap();

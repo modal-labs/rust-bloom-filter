@@ -120,7 +120,7 @@ impl BitMap {
         header[13..][0..32].copy_from_slice(seed);
     }
 
-    fn validate_layout(bytes: &[u8]) -> Result<(), &'static str> {
+    pub(crate) fn validate_layout(bytes: &[u8]) -> Result<(), &'static str> {
         if bytes.len() < BITMAP_HEADER_SIZE {
             return Err("Invalid size");
         }

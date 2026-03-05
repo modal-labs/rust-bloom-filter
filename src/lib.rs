@@ -9,6 +9,9 @@
 mod bitmap;
 use bitmap::*;
 
+mod readonly;
+pub use readonly::ReadOnlyBloom;
+
 use std::cmp;
 use std::convert::TryFrom;
 use std::f64;
