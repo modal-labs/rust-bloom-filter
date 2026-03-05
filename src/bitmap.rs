@@ -24,14 +24,6 @@ pub(crate) struct BitMap {
     header_and_bits: BitMapStorage,
 }
 
-impl Clone for BitMap {
-    fn clone(&self) -> Self {
-        Self {
-            header_and_bits: BitMapStorage::Owned(self.as_slice().to_vec()),
-        }
-    }
-}
-
 impl BitMap {
     pub fn new(len_bytes: usize) -> Self {
         let mut header_and_bits = vec![0; BITMAP_HEADER_SIZE + len_bytes];

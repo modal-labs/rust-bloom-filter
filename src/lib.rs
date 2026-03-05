@@ -34,7 +34,6 @@ pub mod reexports {
 }
 
 /// Bloom filter structure
-#[derive(Clone)]
 pub struct Bloom<T: ?Sized> {
     bitmap: BitMap,
     bitmap_bits: u64,
@@ -407,7 +406,6 @@ impl<T: ?Sized> Bloom<T> {
 /// This wrapper exposes only non-mutating methods (`check`, `as_slice`, etc.)
 /// and prevents accidental writes at compile time. It is especially useful
 /// for memory-mapped filters opened in read-only mode.
-#[derive(Clone)]
 pub struct ReadOnlyBloom<T: ?Sized> {
     inner: Bloom<T>,
 }
