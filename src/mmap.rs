@@ -56,22 +56,20 @@ impl MmapStorage {
     }
 }
 
-fn invalid_data(msg: &'static str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, msg)
-}
-
 impl<T: ?Sized> Bloom<T, MmapStorage> {
     /// Open a read-only memory-mapped bloom filter from a file.
     ///
     /// The file is mapped with `PROT_READ | MAP_SHARED`.
     pub fn from_file(file: &File) -> io::Result<Self> {
-        Self::from_storage(MmapStorage::from_file(file)?).map_err(invalid_data)
+        Self::from_storage(MmapStorage::from_file(file)?)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     /// Open a read-only memory-mapped bloom filter from a file path.
     ///
     /// The file is opened read-only and mapped with `PROT_READ | MAP_SHARED`.
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        Self::from_storage(MmapStorage::from_path(path)?).map_err(invalid_data)
+        Self::from_storage(MmapStorage::from_path(path)?)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
