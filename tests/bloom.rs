@@ -117,7 +117,7 @@ fn bloom_test_seed_roundtrip() {
 }
 
 /// Golden bytes for the v1 binary format, produced with:
-///   Bloom::<str>::new_with_seed(NonZeroUsize::new(32).unwrap(), NonZeroUsize::new(100).unwrap(), &[42u8; 32])
+///   Bloom::<str>::new_with_seed(bitmap_size=32, items_count=100, seed=[42u8; 32])
 ///   followed by .set("hello"), .set("world"), .set("bloom filter")
 const GOLDEN_BYTES: [u8; 77] = [
     0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a, 0x2a, 0x2a,

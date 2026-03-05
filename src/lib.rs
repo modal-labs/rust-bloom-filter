@@ -58,7 +58,7 @@ impl<T: ?Sized, S> Debug for Bloom<T, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Bloom filter with {} bits, {} hash functions and seed: {:?} ",
+            "Bloom filter with {} bits, {} hash functions and seed: {:?}",
             self.bitmap_bits.get(),
             self.k_num,
             self.seed()
