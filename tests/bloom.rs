@@ -127,6 +127,40 @@ fn bloom_test_seed_roundtrip() {
     assert_eq!(bloom.seed(), seed);
 }
 
+/// Golden bytes for the v1 binary format, produced with:
+///   Bloom::<str>::new_with_seed(32, 100, &[42u8; 32])
+///   .set("hello"), .set("world"), .set("bloom filter")
+const GOLDEN_BYTES: [u8; 77] = [
+    0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a, 0x2a, 0x2a,
+    0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a,
+    0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
+];
+
+#[test]
+fn bloom_test_golden_format_compatibility() {
+    let bloom: Bloom<str, OwnedStorage> = Bloom::from_slice(&GOLDEN_BYTES).unwrap();
+    assert_eq!(bloom.seed(), [42u8; 32]);
+    assert_eq!(bloom.len(), 256);
+    assert_eq!(bloom.number_of_hash_functions(), 2);
+    assert!(bloom.check("hello"));
+    assert!(bloom.check("world"));
+    assert!(bloom.check("bloom filter"));
+    assert!(!bloom.check("missing"));
+    assert!(!bloom.check("nope"));
+}
+
+#[test]
+fn bloom_test_golden_produces_identical_bytes() {
+    let seed = [42u8; 32];
+    let mut bloom: Bloom<str, OwnedStorage> = Bloom::new_with_seed(32, 100, &seed).unwrap();
+    bloom.set("hello");
+    bloom.set("world");
+    bloom.set("bloom filter");
+    assert_eq!(bloom.as_slice(), &GOLDEN_BYTES);
+}
+
 #[test]
 fn bloom_test_is_empty_and_fill() {
     let seed = [2u8; 32];
