@@ -13,12 +13,13 @@ impl Storage for OwnedStorage {
 }
 
 impl OwnedStorage {
-    pub(crate) fn new(len_bytes: usize) -> Self {
+    pub(crate) fn new(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Self {
         let mut bytes = vec![0; HEADER_SIZE + len_bytes];
         let header = &mut bytes[0..HEADER_SIZE];
         crate::header::set_version(header, VERSION);
         crate::header::set_len_bytes(header, len_bytes as u64);
-        crate::header::set_k_num(header, 0);
+        crate::header::set_k_num(header, k_num);
+        crate::header::set_seed(header, seed);
         Self(bytes)
     }
 

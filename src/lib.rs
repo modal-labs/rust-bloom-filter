@@ -228,13 +228,6 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
         Ok(())
     }
 
-    fn sync(&mut self) {
-        let seed = self.seed();
-        let header = &mut self.storage.bytes_mut()[0..HEADER_SIZE];
-        header::set_k_num(header, self.k_num);
-        header::set_seed(header, &seed);
-    }
-
     /// Create a new bloom filter structure.
     /// bitmap_size is the size in bytes (not bits) that will be allocated in
     /// memory. items_count is an estimation of the maximum number of items
@@ -250,17 +243,8 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
             .checked_mul(8u64)
             .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
-        let storage = OwnedStorage::new(bitmap_size);
-        let sips = header::sips_from_seed(seed);
-        let mut res = Self {
-            storage,
-            bitmap_bits,
-            k_num,
-            sips,
-            _phantom: PhantomData,
-        };
-        res.sync();
-        Ok(res)
+        let storage = OwnedStorage::new(bitmap_size, k_num, seed);
+        Self::from_storage(storage)
     }
 
     /// Create a new bloom filter structure.
