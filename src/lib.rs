@@ -230,7 +230,7 @@ impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
     }
 }
 
-impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
+impl<T: ?Sized, S: Clone> Clone for Bloom<T, S> {
     fn clone(&self) -> Self {
         Self {
             storage: self.storage.clone(),

@@ -30,7 +30,7 @@ fn unique_temp_path(test_name: &str) -> PathBuf {
 #[cfg(feature = "random")]
 fn bloom_test_set() {
     let mut bloom = Bloom::new(10, 80).unwrap();
-    let mut k = vec![0u8, 16];
+    let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     assert!(!bloom.check(&k));
     bloom.set(&k);
@@ -41,7 +41,7 @@ fn bloom_test_set() {
 #[cfg(feature = "random")]
 fn bloom_test_check_and_set() {
     let mut bloom = Bloom::new(10, 80).unwrap();
-    let mut k = vec![0u8, 16];
+    let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     assert!(!bloom.check_and_set(&k));
     assert!(bloom.check_and_set(&k));
@@ -51,7 +51,7 @@ fn bloom_test_check_and_set() {
 #[cfg(feature = "random")]
 fn bloom_test_clear() {
     let mut bloom = Bloom::new(10, 80).unwrap();
-    let mut k = vec![0u8, 16];
+    let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     bloom.set(&k);
     assert!(bloom.check(&k));
@@ -63,7 +63,7 @@ fn bloom_test_clear() {
 #[cfg(feature = "random")]
 fn bloom_test_load() {
     let mut original = Bloom::new(10, 80).unwrap();
-    let mut k = vec![0u8, 16];
+    let mut k = vec![0u8; 16];
     getrandom(&mut k).unwrap();
     original.set(&k);
     assert!(original.check(&k));
@@ -186,7 +186,7 @@ fn bloom_test_mmap_persist_and_reload() {
 
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
-    fs::write(&path, bloom.as_slice().to_vec()).unwrap();
+    fs::write(&path, bloom.as_slice()).unwrap();
 
     let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
     assert!(ro.check(key));
@@ -237,7 +237,7 @@ fn bloom_test_mmap_is_prot_read() {
     // Create and populate a filter, write to file.
     let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
     bloom.set(key);
-    fs::write(&path, bloom.as_slice().to_vec()).unwrap();
+    fs::write(&path, bloom.as_slice()).unwrap();
 
     // Open as read-only mmap and verify the mapping flags via /proc/self/maps.
     let ro: MmapBloom<[u8]> = Bloom::from_path(&path).unwrap();
