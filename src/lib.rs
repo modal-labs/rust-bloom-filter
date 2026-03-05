@@ -13,6 +13,16 @@ mod owned;
 #[cfg(feature = "mmap")]
 mod mmap;
 
+use std::cmp;
+use std::f64;
+use std::fmt::{self, Debug};
+use std::hash::Hash;
+use std::marker::PhantomData;
+
+use siphasher::sip::SipHasher13;
+
+use header::HEADER_SIZE;
+
 pub use owned::OwnedStorage;
 
 #[cfg(feature = "mmap")]
@@ -33,16 +43,6 @@ pub trait StorageMut: Storage {
     /// View the raw bytes mutably.
     fn bytes_mut(&mut self) -> &mut [u8];
 }
-
-use header::HEADER_SIZE;
-
-use std::cmp;
-use std::f64;
-use std::fmt::{self, Debug};
-use std::hash::Hash;
-use std::marker::PhantomData;
-
-use siphasher::sip::SipHasher13;
 
 pub mod reexports {
     #[cfg(feature = "random")]
