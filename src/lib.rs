@@ -12,7 +12,7 @@ mod header;
 mod mmap;
 
 use std::cmp;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::f64;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
@@ -288,14 +288,9 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
         items_count: NonZeroUsize,
         seed: &[u8; 32],
     ) -> Self {
+        let bitmap_bits =
+            NonZeroU64::new(bitmap_size.get() as u64 * 8).expect("nonzero bitmap size");
         let bitmap_size = bitmap_size.get();
-        let bitmap_bits = NonZeroU64::new(
-            u64::try_from(bitmap_size)
-                .unwrap()
-                .checked_mul(8u64)
-                .unwrap(),
-        )
-        .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
         let mut storage = vec![0; HEADER_SIZE + bitmap_size];
         let header = &mut storage[0..HEADER_SIZE];
