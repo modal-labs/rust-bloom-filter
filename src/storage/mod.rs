@@ -18,7 +18,4 @@ pub(crate) use sealed::Sealed;
 pub trait Storage: Sealed {
     /// View the raw bytes (header + bitmap).
     fn bytes(&self) -> &[u8];
-
-    /// Consume the storage and return the bytes as a vector.
-    fn into_bytes(self) -> Vec<u8>;
 }

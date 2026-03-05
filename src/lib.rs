@@ -146,16 +146,6 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
         self.storage.bytes()
     }
 
-    /// Serialize the bloom filter to an opaque byte vector.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.storage.bytes().to_vec()
-    }
-
-    /// Transform the bloom filter into a byte vector.
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.storage.into_bytes()
-    }
-
     fn from_raw_storage(storage: S) -> Result<Self, &'static str> {
         let (bitmap_bits, k_num, sips) = header::parse(storage.bytes())?;
         Ok(Self {
@@ -171,6 +161,16 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
 // --- Write methods + constructors (OwnedStorage) ---
 
 impl<T: ?Sized> Bloom<T, OwnedStorage> {
+    /// Serialize the bloom filter to an opaque byte vector.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.storage.bytes().to_vec()
+    }
+
+    /// Transform the bloom filter into a byte vector.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.storage.0
+    }
+
     /// Record the presence of an item.
     pub fn set(&mut self, item: &T)
     where
@@ -308,7 +308,7 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
     #[doc(hidden)]
     /// Reallocate large heap allocated objects in the bitmap using the provided function.
     pub fn realloc_large_heap_allocated_objects(self, f: fn(Vec<u8>) -> Vec<u8>) -> Self {
-        let previous_bytes = self.storage.into_bytes();
+        let previous_bytes = self.storage.0;
         let previous_len = previous_bytes.len();
         let new_bytes = f(previous_bytes);
         assert_eq!(previous_len, new_bytes.len());

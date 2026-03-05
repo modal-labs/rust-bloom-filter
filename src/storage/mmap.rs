@@ -16,9 +16,6 @@ impl Storage for MmapStorage {
     fn bytes(&self) -> &[u8] {
         &self.0[..]
     }
-    fn into_bytes(self) -> Vec<u8> {
-        self.0[..].to_vec()
-    }
 }
 
 impl MmapStorage {

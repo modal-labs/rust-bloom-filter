@@ -107,7 +107,7 @@ fn bloom_test_mmap_persist_and_reload() {
 
     let ro = Bloom::<_, MmapStorage>::from_mmap_path_readonly(&path).unwrap();
     assert!(ro.check(key));
-    let from_bytes = Bloom::from_bytes(ro.to_bytes()).unwrap();
+    let from_bytes = Bloom::from_slice(ro.as_slice()).unwrap();
     assert!(from_bytes.check(key));
 
     fs::remove_file(path).unwrap();
@@ -127,7 +127,7 @@ fn bloom_test_mmap_load_serialized_filter() {
 
     let mapped = Bloom::<_, MmapStorage>::from_mmap_path_readonly(&path).unwrap();
     assert!(mapped.check(key));
-    assert_eq!(mapped.to_bytes(), serialized);
+    assert_eq!(mapped.as_slice(), serialized);
 
     fs::remove_file(path).unwrap();
 }
@@ -176,7 +176,7 @@ fn readonly_bloom_mmap_load_serialized() {
 
     let ro = Bloom::<_, MmapStorage>::from_mmap_path_readonly(&path).unwrap();
     assert!(ro.check(key));
-    assert_eq!(ro.to_bytes(), serialized);
+    assert_eq!(ro.as_slice(), serialized);
 
     fs::remove_file(path).unwrap();
 }

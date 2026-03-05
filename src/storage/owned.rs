@@ -10,9 +10,6 @@ impl Storage for OwnedStorage {
     fn bytes(&self) -> &[u8] {
         &self.0
     }
-    fn into_bytes(self) -> Vec<u8> {
-        self.0
-    }
 }
 
 impl OwnedStorage {
