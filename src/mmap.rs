@@ -10,6 +10,8 @@ use crate::{Bloom, Storage};
 ///
 /// Mapped with `PROT_READ | MAP_PRIVATE` — provides a stable snapshot
 /// that is unaffected by concurrent modifications to the underlying file.
+/// Multiple mappings of the same file share physical memory through the
+/// kernel page cache (no duplication).
 ///
 /// # Safety note
 ///
