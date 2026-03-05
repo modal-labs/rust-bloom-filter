@@ -494,11 +494,6 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
     pub fn into_bytes(self) -> Vec<u8> {
         self.inner.into_bytes()
     }
-
-    /// Unwrap into the inner `Bloom` filter.
-    pub fn into_inner(self) -> Bloom<T> {
-        self.inner
-    }
 }
 
 #[cfg(feature = "serde")]
