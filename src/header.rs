@@ -1,7 +1,5 @@
 use std::convert::TryInto;
 
-use siphasher::sip::SipHasher13;
-
 pub const VERSION: u8 = 1;
 pub const HEADER_SIZE: usize = 1 + 8 + 4 + 32;
 
@@ -32,8 +30,8 @@ pub(crate) fn get_version(header: &[u8]) -> u8 {
 
 /// Validate a serialized bloom filter header and return its parameters.
 ///
-/// On success returns `(bitmap_bits, k_num, sips)`.
-pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [SipHasher13; 2]), &'static str> {
+/// On success returns `(bitmap_bits, k_num, seed)`.
+pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [u8; 32]), &'static str> {
     if bytes.len() < HEADER_SIZE {
         return Err("Invalid size");
     }
@@ -55,19 +53,7 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [SipHasher13; 2]), &'stat
 
     let mut seed = [0u8; 32];
     seed.copy_from_slice(&header[13..][0..32]);
-    let sips = sips_from_seed(&seed);
     let bitmap_bits = (bits.len() as u64).checked_mul(8).unwrap();
 
-    Ok((bitmap_bits, k_num, sips))
-}
-
-pub(crate) fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
-    let mut k1 = [0u8; 16];
-    let mut k2 = [0u8; 16];
-    k1.copy_from_slice(&seed[0..16]);
-    k2.copy_from_slice(&seed[16..32]);
-    [
-        SipHasher13::new_with_key(&k1),
-        SipHasher13::new_with_key(&k2),
-    ]
+    Ok((bitmap_bits, k_num, seed))
 }

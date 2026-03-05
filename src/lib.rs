@@ -129,12 +129,12 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
     /// The storage must contain a valid serialized bloom filter
     /// (as produced by [`to_bytes`](Bloom::to_bytes) or [`as_slice`](Bloom::as_slice)).
     pub fn from_storage(storage: S) -> Result<Self, &'static str> {
-        let (bitmap_bits, k_num, sips) = header::parse(storage.bytes())?;
+        let (bitmap_bits, k_num, seed) = header::parse(storage.bytes())?;
         Ok(Self {
             storage,
             bitmap_bits,
             k_num,
-            sips,
+            sips: hash::sips_from_seed(&seed),
             _phantom: PhantomData,
         })
     }
