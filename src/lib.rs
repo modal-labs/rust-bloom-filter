@@ -238,16 +238,6 @@ impl<T: ?Sized, S: AsRef<[u8]> + Clone> Clone for Bloom<T, S> {
 
 // --- Vec<u8> storage (heap-allocated) ---
 
-fn new_storage(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Vec<u8> {
-    let mut bytes = vec![0; HEADER_SIZE + len_bytes];
-    let header = &mut bytes[0..HEADER_SIZE];
-    header::set_version(header, VERSION);
-    header::set_len_bytes(header, len_bytes as u64);
-    header::set_k_num(header, k_num);
-    header::set_seed(header, seed);
-    bytes
-}
-
 impl<T: ?Sized> Bloom<T, Vec<u8>> {
     /// Serialize the bloom filter to an opaque byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -276,7 +266,12 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
             .checked_mul(8u64)
             .unwrap();
         let k_num = Self::optimal_k_num(bitmap_bits, items_count);
-        let storage = new_storage(bitmap_size, k_num, seed);
+        let mut storage = vec![0; HEADER_SIZE + bitmap_size];
+        let header = &mut storage[0..HEADER_SIZE];
+        header::set_version(header, VERSION);
+        header::set_len_bytes(header, bitmap_size as u64);
+        header::set_k_num(header, k_num);
+        header::set_seed(header, seed);
         Self::from_storage(storage)
     }
 
