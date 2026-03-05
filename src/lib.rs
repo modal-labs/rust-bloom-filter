@@ -12,7 +12,7 @@ mod header;
 mod mmap;
 
 use std::cmp;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::f64;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
@@ -99,6 +99,12 @@ impl<T: ?Sized, S> Bloom<T, S> {
         NonZeroUsize::new(size).expect("bitmap size must be at least 1 byte")
     }
 
+    fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
+        let k1: [u8; 16] = seed[0..16].try_into().unwrap();
+        let k2: [u8; 16] = seed[16..32].try_into().unwrap();
+        [SipHasher13::new_with_key(&k1), SipHasher13::new_with_key(&k2)]
+    }
+
     fn bloom_hash(&self, hashes: &mut [u64; 2], item: &T, k_i: u32) -> u64
     where
         T: Hash,
@@ -158,19 +164,40 @@ impl<T: ?Sized, S: AsRef<[u8]>> Bloom<T, S> {
         self.storage.as_ref()
     }
 
-    pub(crate) fn from_storage(storage: S) -> Result<Self, &'static str> {
-        let (bitmap_bits, k_num, seed) = header::parse(storage.as_ref())?;
+    pub(crate) fn parse(storage: S) -> Result<Self, &'static str> {
+        let bytes = storage.as_ref();
+        if bytes.len() < HEADER_SIZE {
+            return Err("Invalid size");
+        }
+        let header = &bytes[0..HEADER_SIZE];
+        let bits = &bytes[HEADER_SIZE..];
+
+        if header[0] != VERSION {
+            return Err("Version mismatch");
+        }
+        let k_num = u32::from_le_bytes(header[9..][0..4].try_into().unwrap());
+        if k_num == 0 {
+            return Err("Invalid number of keys");
+        }
+        let len_bytes_u64 = u64::from_le_bytes(header[1..][0..8].try_into().unwrap());
+        let len_bytes: usize = len_bytes_u64.try_into().map_err(|_| "Too big")?;
+        if bits.len() != len_bytes {
+            return Err("Invalid size");
+        }
+        if len_bytes == 0 {
+            return Err("Bitmap cannot be empty");
+        }
+
+        let bitmap_bits =
+            NonZeroU64::new((bits.len() as u64).checked_mul(8).unwrap()).unwrap();
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&header[13..][0..32]);
+
         Ok(Self {
             storage,
             bitmap_bits,
             k_num,
-            sips: {
-                let mut k1 = [0u8; 16];
-                let mut k2 = [0u8; 16];
-                k1.copy_from_slice(&seed[0..16]);
-                k2.copy_from_slice(&seed[16..32]);
-                [SipHasher13::new_with_key(&k1), SipHasher13::new_with_key(&k2)]
-            },
+            sips: Self::sips_from_seed(&seed),
             _phantom: PhantomData,
         })
     }
@@ -260,7 +287,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
         bitmap_size: NonZeroUsize,
         items_count: NonZeroUsize,
         seed: &[u8; 32],
-    ) -> Result<Self, &'static str> {
+    ) -> Self {
         let bitmap_size = bitmap_size.get();
         let bitmap_bits = NonZeroU64::new(
             u64::try_from(bitmap_size)
@@ -276,7 +303,13 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
         header::set_len_bytes(header, bitmap_size as u64);
         header::set_k_num(header, k_num);
         header::set_seed(header, seed);
-        Self::from_storage(storage)
+        Self {
+            storage,
+            bitmap_bits,
+            k_num,
+            sips: Self::sips_from_seed(seed),
+            _phantom: PhantomData,
+        }
     }
 
     /// Create a new bloom filter structure.
@@ -287,7 +320,7 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
     pub fn new(bitmap_size: NonZeroUsize, items_count: NonZeroUsize) -> Result<Self, &'static str> {
         let mut seed = [0u8; 32];
         getrandom(&mut seed).map_err(|_| "Could not generate random seed")?;
-        Self::new_with_seed(bitmap_size, items_count, &seed)
+        Ok(Self::new_with_seed(bitmap_size, items_count, &seed))
     }
 
     /// Create a new bloom filter structure.
@@ -306,19 +339,19 @@ impl<T: ?Sized> Bloom<T, Vec<u8>> {
         items_count: NonZeroUsize,
         fp_p: f64,
         seed: &[u8; 32],
-    ) -> Result<Self, &'static str> {
+    ) -> Self {
         let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
         Self::new_with_seed(bitmap_size, items_count, seed)
     }
 
     /// Create a bloom filter from a slice of bytes, previously generated with `as_slice`.
     pub fn from_slice(bytes: &[u8]) -> Result<Self, &'static str> {
-        Self::from_storage(bytes.to_vec())
+        Self::parse(bytes.to_vec())
     }
 
     /// Transform a byte vector into a bloom filter.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
-        Self::from_storage(bytes)
+        Self::parse(bytes)
     }
 }
 

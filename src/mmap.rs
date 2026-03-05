@@ -64,7 +64,7 @@ impl<T: ?Sized> Bloom<T, MmapStorage> {
     ///
     /// The file is mapped with `PROT_READ | MAP_SHARED`.
     pub fn from_file(file: &File) -> io::Result<Self> {
-        Self::from_storage(MmapStorage::from_file(file)?)
+        Self::parse(MmapStorage::from_file(file)?)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
@@ -72,7 +72,7 @@ impl<T: ?Sized> Bloom<T, MmapStorage> {
     ///
     /// The file is opened read-only and mapped with `PROT_READ | MAP_SHARED`.
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        Self::from_storage(MmapStorage::from_path(path)?)
+        Self::parse(MmapStorage::from_path(path)?)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
