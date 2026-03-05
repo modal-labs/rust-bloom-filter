@@ -10,10 +10,10 @@ mod bitmap;
 mod hash;
 pub mod storage;
 
-pub use storage::{Flush, OwnedStorage, Storage, StorageMut};
+pub use storage::{OwnedStorage, Storage};
 
 #[cfg(feature = "mmap")]
-pub use storage::{MmapReadOnlyStorage, MmapStorage};
+pub use storage::MmapReadOnlyStorage;
 
 use bitmap::BITMAP_HEADER_SIZE;
 
@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 use std::f64;
 use std::fmt::{self, Debug};
 #[cfg(feature = "mmap")]
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
@@ -44,8 +44,7 @@ pub mod reexports {
 /// Bloom filter structure, generic over storage backend.
 ///
 /// The default storage is [`OwnedStorage`] (heap-allocated).
-/// Use [`MmapStorage`] for read-write memory-mapped files,
-/// or [`MmapReadOnlyStorage`] for read-only memory-mapped files
+/// Use [`MmapReadOnlyStorage`] for read-only memory-mapped files
 /// (see [`ReadOnlyBloom`]).
 pub struct Bloom<T: ?Sized, S = OwnedStorage> {
     storage: S,
@@ -177,9 +176,9 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
     }
 }
 
-// --- Write methods (StorageMut) ---
+// --- Write methods + constructors (OwnedStorage) ---
 
-impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
+impl<T: ?Sized> Bloom<T> {
     /// Record the presence of an item.
     pub fn set(&mut self, item: &T)
     where
@@ -231,27 +230,19 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         }
     }
 
+    /// Flush pending writes to persistent storage.
+    /// For in-memory filters, this is a no-op.
+    pub fn flush(&self) -> io::Result<()> {
+        Ok(())
+    }
+
     fn sync(&mut self) {
         let seed = self.seed();
         let header = &mut self.storage.bytes_mut()[0..BITMAP_HEADER_SIZE];
         bitmap::set_k_num(header, self.k_num);
         bitmap::set_seed(header, &seed);
     }
-}
 
-// --- Flush ---
-
-impl<T: ?Sized, S: Flush> Bloom<T, S> {
-    /// Flush pending writes to persistent storage.
-    /// For in-memory filters, this is a no-op.
-    pub fn flush(&self) -> io::Result<()> {
-        self.storage.flush()
-    }
-}
-
-// --- OwnedStorage constructors ---
-
-impl<T: ?Sized> Bloom<T> {
     /// Create a new bloom filter structure.
     /// bitmap_size is the size in bytes (not bits) that will be allocated in
     /// memory. items_count is an estimation of the maximum number of items
@@ -341,97 +332,6 @@ impl<T: ?Sized> Bloom<T> {
             _phantom: PhantomData,
         }
     }
-
-    // --- MmapStorage constructors (on Bloom<T> for ergonomics) ---
-
-    /// Create a new memory-mapped bloom filter structure backed by a file.
-    /// `path` is truncated if it already exists.
-    #[cfg(feature = "mmap")]
-    pub fn new_mmap_with_seed<P: AsRef<Path>>(
-        path: P,
-        bitmap_size: usize,
-        items_count: usize,
-        seed: &[u8; 32],
-    ) -> io::Result<Bloom<T, MmapStorage>> {
-        assert!(bitmap_size > 0 && items_count > 0);
-        let bitmap_bits = u64::try_from(bitmap_size)
-            .unwrap()
-            .checked_mul(8u64)
-            .unwrap();
-        let k_num = Self::optimal_k_num(bitmap_bits, items_count);
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .read(true)
-            .write(true)
-            .open(path)?;
-        let storage = MmapStorage::create_in_file(&file, bitmap_size)?;
-        let sips = hash::sips_from_seed(seed);
-        let mut res = Bloom {
-            storage,
-            bitmap_bits,
-            k_num,
-            sips,
-            _phantom: PhantomData,
-        };
-        res.sync();
-        res.flush()?;
-        Ok(res)
-    }
-
-    /// Create a new memory-mapped bloom filter structure backed by a file.
-    /// `path` is truncated if it already exists.
-    #[cfg(all(feature = "mmap", feature = "random"))]
-    pub fn new_mmap<P: AsRef<Path>>(
-        path: P,
-        bitmap_size: usize,
-        items_count: usize,
-    ) -> io::Result<Bloom<T, MmapStorage>> {
-        let mut seed = [0u8; 32];
-        getrandom(&mut seed)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Could not generate random seed"))?;
-        Self::new_mmap_with_seed(path, bitmap_size, items_count, &seed)
-    }
-
-    /// Create a new memory-mapped bloom filter structure backed by a file.
-    /// `path` is truncated if it already exists.
-    #[cfg(all(feature = "mmap", feature = "random"))]
-    pub fn new_mmap_for_fp_rate<P: AsRef<Path>>(
-        path: P,
-        items_count: usize,
-        fp_p: f64,
-    ) -> io::Result<Bloom<T, MmapStorage>> {
-        let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
-        Self::new_mmap(path, bitmap_size, items_count)
-    }
-
-    /// Create a new memory-mapped bloom filter structure backed by a file.
-    /// `path` is truncated if it already exists.
-    #[cfg(feature = "mmap")]
-    pub fn new_mmap_for_fp_rate_with_seed<P: AsRef<Path>>(
-        path: P,
-        items_count: usize,
-        fp_p: f64,
-        seed: &[u8; 32],
-    ) -> io::Result<Bloom<T, MmapStorage>> {
-        let bitmap_size = Self::compute_bitmap_size(items_count, fp_p);
-        Self::new_mmap_with_seed(path, bitmap_size, items_count, seed)
-    }
-
-    /// Create a bloom filter from a read-write memory-mapped file.
-    #[cfg(feature = "mmap")]
-    pub fn from_mmap_file(file: &File) -> io::Result<Bloom<T, MmapStorage>> {
-        let storage = MmapStorage::from_file(file)?;
-        Bloom::from_raw_storage(storage)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-    }
-
-    /// Create a bloom filter from a read-write memory-mapped file path.
-    #[cfg(feature = "mmap")]
-    pub fn from_mmap_path<P: AsRef<Path>>(path: P) -> io::Result<Bloom<T, MmapStorage>> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        Self::from_mmap_file(&file)
-    }
 }
 
 // --- MmapReadOnlyStorage constructors ---
@@ -441,7 +341,7 @@ impl<T: ?Sized> Bloom<T, MmapReadOnlyStorage> {
     /// Create a read-only bloom filter from a memory-mapped file.
     ///
     /// The file is mapped with `PROT_READ` only.
-    pub fn from_mmap_file_readonly(file: &File) -> io::Result<Self> {
+    pub fn from_mmap_file_readonly(file: &std::fs::File) -> io::Result<Self> {
         let storage = MmapReadOnlyStorage::from_file(file)?;
         Self::from_raw_storage(storage)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
@@ -456,60 +356,8 @@ impl<T: ?Sized> Bloom<T, MmapReadOnlyStorage> {
     }
 }
 
-// --- Serde ---
+#[cfg(feature = "serde")]
+mod serde_impl;
 
 #[cfg(feature = "serde")]
-mod serde_extensions {
-    use super::*;
-
-    use reexports::serde;
-
-    use serde::{
-        de::{Error as DeError, Visitor},
-        Deserializer, Serializer,
-    };
-
-    pub fn serialize<Ser: Serializer, T: ?Sized>(
-        bloom: &Bloom<T>,
-        serializer: Ser,
-    ) -> Result<Ser::Ok, Ser::Error> {
-        serializer.serialize_bytes(bloom.as_slice())
-    }
-
-    struct BloomVisitor<T: ?Sized> {
-        _phantom: PhantomData<T>,
-    }
-
-    impl<T: ?Sized> Visitor<'_> for BloomVisitor<T> {
-        type Value = Bloom<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("Blom filter")
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where
-            E: DeError,
-        {
-            Bloom::from_slice(v).map_err(E::custom)
-        }
-
-        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-        where
-            E: DeError,
-        {
-            Bloom::from_bytes(v).map_err(E::custom)
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>, T: ?Sized>(
-        deserializer: D,
-    ) -> Result<Bloom<T>, D::Error> {
-        deserializer.deserialize_bytes(BloomVisitor {
-            _phantom: PhantomData,
-        })
-    }
-}
-
-#[cfg(feature = "serde")]
-pub use serde_extensions::*;
+pub use serde_impl::*;

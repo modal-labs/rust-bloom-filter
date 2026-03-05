@@ -101,20 +101,14 @@ fn bloom_test_mmap_persist_and_reload() {
     let seed = [7u8; 32];
     let key = b"persistent-key";
 
-    {
-        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
-        assert!(!bloom.check(key));
-        bloom.set(key);
-        assert!(bloom.check(key));
-        bloom.flush().unwrap();
-    }
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+    fs::write(&path, bloom.to_bytes()).unwrap();
 
-    {
-        let bloom = Bloom::from_mmap_path(&path).unwrap();
-        assert!(bloom.check(key));
-        let from_bytes = Bloom::from_bytes(bloom.to_bytes()).unwrap();
-        assert!(from_bytes.check(key));
-    }
+    let ro = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
+    assert!(ro.check(key));
+    let from_bytes = Bloom::from_bytes(ro.to_bytes()).unwrap();
+    assert!(from_bytes.check(key));
 
     fs::remove_file(path).unwrap();
 }
@@ -131,7 +125,7 @@ fn bloom_test_mmap_load_serialized_filter() {
     let serialized = bloom.to_bytes();
     fs::write(&path, &serialized).unwrap();
 
-    let mapped = Bloom::from_mmap_path(&path).unwrap();
+    let mapped = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
     assert!(mapped.check(key));
     assert_eq!(mapped.to_bytes(), serialized);
 
@@ -144,7 +138,7 @@ fn bloom_test_mmap_rejects_invalid_file() {
     let path = unique_temp_path("invalid");
     fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
 
-    let err = Bloom::<[u8]>::from_mmap_path(&path).unwrap_err();
+    let err = ReadOnlyBloom::<[u8]>::from_mmap_path_readonly(&path).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 
     fs::remove_file(path).unwrap();
@@ -157,15 +151,13 @@ fn readonly_bloom_mmap_check() {
     let seed = [9u8; 32];
     let key = b"readonly-key";
 
-    {
-        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
-        bloom.set(key);
-        bloom.flush().unwrap();
-    }
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+    fs::write(&path, bloom.to_bytes()).unwrap();
 
-    let bloom = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
-    assert!(bloom.check(key));
-    assert!(!bloom.check(b"missing-key!"));
+    let ro = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
+    assert!(ro.check(key));
+    assert!(!ro.check(b"missing-key!"));
 
     fs::remove_file(path).unwrap();
 }
@@ -223,12 +215,10 @@ fn readonly_bloom_mmap_is_prot_read() {
     let seed = [13u8; 32];
     let key = b"prot-test-key";
 
-    // Create and populate a filter.
-    {
-        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
-        bloom.set(key);
-        bloom.flush().unwrap();
-    }
+    // Create and populate a filter, write to file.
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+    fs::write(&path, bloom.to_bytes()).unwrap();
 
     // Open as ReadOnlyBloom and verify the mapping flags via /proc/self/maps.
     let ro = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
