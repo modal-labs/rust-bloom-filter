@@ -139,11 +139,7 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
         self.storage.bytes()
     }
 
-    /// Create a bloom filter from a pre-built storage backend.
-    ///
-    /// The storage must contain a valid serialized bloom filter
-    /// (as produced by [`to_bytes`](Bloom::to_bytes) or [`as_slice`](Bloom::as_slice)).
-    pub fn from_storage(storage: S) -> Result<Self, &'static str> {
+    pub(crate) fn from_storage(storage: S) -> Result<Self, &'static str> {
         let (bitmap_bits, k_num, seed) = header::parse(storage.bytes())?;
         Ok(Self {
             storage,

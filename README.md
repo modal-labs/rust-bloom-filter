@@ -48,7 +48,7 @@ bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
 ```rust,ignore
-use bloomfilter::{Bloom, MmapStorage, OwnedStorage};
+use bloomfilter::{Bloom, MmapStorage};
 
 let seed = [7u8; 32];
 let path = std::env::temp_dir().join("bloomfilter-mmap-example.bin");
@@ -59,8 +59,7 @@ bloom.set(&1234);
 std::fs::write(&path, bloom.as_slice()).unwrap();
 
 // Reopen with a read-only memory map (PROT_READ | MAP_SHARED).
-let mapped: Bloom<i32, MmapStorage> =
-    Bloom::from_storage(MmapStorage::from_path(&path).unwrap()).unwrap();
+let mapped: Bloom<i32, MmapStorage> = Bloom::from_path(&path).unwrap();
 assert!(mapped.check(&1234));
 std::fs::remove_file(path).ok();
 ```
