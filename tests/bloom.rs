@@ -277,7 +277,7 @@ fn readonly_bloom_mmap_rejects_invalid_file() {
 }
 
 /// Parse /proc/self/maps to find the permission flags for a given file path.
-/// Returns entries like "r--s" (read-only shared) or "rw-s" (read-write shared).
+/// Returns entries like "r--p" (read-only private) or "r--s" (read-only shared).
 #[cfg(all(feature = "mmap", target_os = "linux"))]
 fn mmap_perms_for_path(path: &std::path::Path) -> Vec<String> {
     let canonical = path.canonicalize().unwrap();
@@ -311,7 +311,7 @@ fn readonly_bloom_mmap_is_prot_read() {
     assert!(!perms.is_empty(), "expected at least one mapping for {:?}", path);
     for perm in &perms {
         assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
-        assert_eq!(&perm[3..], "s", "expected shared mapping, got {perm}");
+        assert_eq!(&perm[3..], "p", "expected private mapping, got {perm}");
     }
 
     drop(ro);
