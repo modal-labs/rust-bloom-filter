@@ -199,3 +199,47 @@ fn readonly_bloom_mmap_rejects_invalid_file() {
 
     fs::remove_file(path).unwrap();
 }
+
+/// Parse /proc/self/maps to find the permission flags for a given file path.
+/// Returns entries like "r--s" (read-only shared) or "rw-s" (read-write shared).
+#[cfg(all(feature = "mmap", target_os = "linux"))]
+fn mmap_perms_for_path(path: &std::path::Path) -> Vec<String> {
+    let canonical = path.canonicalize().unwrap();
+    let maps = fs::read_to_string("/proc/self/maps").unwrap();
+    maps.lines()
+        .filter(|line| line.ends_with(canonical.to_str().unwrap()))
+        .map(|line| {
+            // Format: "addr-addr perms offset dev inode pathname"
+            line.split_whitespace().nth(1).unwrap().to_string()
+        })
+        .collect()
+}
+
+#[test]
+#[cfg(all(feature = "mmap", target_os = "linux"))]
+fn readonly_bloom_mmap_is_prot_read() {
+    let path = unique_temp_path("prot-read-check");
+    let seed = [13u8; 32];
+    let key = b"prot-test-key";
+
+    // Create and populate a filter.
+    {
+        let mut bloom = Bloom::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
+        bloom.set(key);
+        bloom.flush().unwrap();
+    }
+
+    // Open as ReadOnlyBloom and verify the mapping flags via /proc/self/maps.
+    let ro = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    assert!(ro.check(key));
+
+    let perms = mmap_perms_for_path(&path);
+    assert!(!perms.is_empty(), "expected at least one mapping for {:?}", path);
+    for perm in &perms {
+        assert_eq!(&perm[..2], "r-", "expected read-only mapping, got {perm}");
+        assert_eq!(&perm[3..], "s", "expected shared mapping, got {perm}");
+    }
+
+    drop(ro);
+    fs::remove_file(path).unwrap();
+}

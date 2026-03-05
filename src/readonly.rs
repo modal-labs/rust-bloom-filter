@@ -107,6 +107,9 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
     pub fn from_mmap_file(file: &File) -> io::Result<Self> {
         // SAFETY: The returned mapping owns its lifetime independently of `file`,
         // and we only expose it through safe slice APIs in this module.
+        //
+        // `MmapOptions::map` (as opposed to `map_mut`) produces a mapping with
+        // PROT_READ | MAP_SHARED — no write permission at the kernel level.
         let mmap = unsafe { MmapOptions::new().map(file) }?;
         Self::from_storage(Storage::Mapped(mmap))
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
