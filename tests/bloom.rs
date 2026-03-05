@@ -97,6 +97,29 @@ fn bloom_test_check_via_from_bytes() {
 }
 
 #[test]
+fn bloom_test_rejects_zero_bitmap_size() {
+    let seed = [1u8; 32];
+    assert!(Bloom::<[u8], OwnedStorage>::new_with_seed(0, 80, &seed).is_err());
+}
+
+#[test]
+fn bloom_test_rejects_zero_items_count() {
+    let seed = [1u8; 32];
+    assert!(Bloom::<[u8], OwnedStorage>::new_with_seed(64, 0, &seed).is_err());
+}
+
+#[test]
+fn bloom_test_rejects_empty_bitmap_in_serialized_data() {
+    // Craft a valid header with len_bytes=0 (just the 45-byte header, no bitmap).
+    let mut bytes = vec![0u8; 45];
+    bytes[0] = 1; // version
+    // len_bytes = 0 (already zero)
+    bytes[9..13].copy_from_slice(&1u32.to_le_bytes()); // k_num = 1
+    // seed is all zeros (fine)
+    assert!(Bloom::<[u8], OwnedStorage>::from_bytes(bytes).is_err());
+}
+
+#[test]
 fn bloom_test_len_and_k_num() {
     let seed = [1u8; 32];
     let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(64, 80, &seed).unwrap();

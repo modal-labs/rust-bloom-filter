@@ -51,6 +51,10 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<(u64, u32, [u8; 32]), &'static str> 
         return Err("Invalid size");
     }
 
+    if len_bytes == 0 {
+        return Err("Bitmap cannot be empty");
+    }
+
     let mut seed = [0u8; 32];
     seed.copy_from_slice(&header[13..][0..32]);
     let bitmap_bits = (bits.len() as u64).checked_mul(8).unwrap();

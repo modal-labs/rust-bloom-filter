@@ -73,7 +73,9 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
         items_count: usize,
         seed: &[u8; 32],
     ) -> Result<Self, &'static str> {
-        assert!(bitmap_size > 0 && items_count > 0);
+        if bitmap_size == 0 || items_count == 0 {
+            return Err("bitmap_size and items_count must be greater than 0");
+        }
         let bitmap_bits = u64::try_from(bitmap_size)
             .unwrap()
             .checked_mul(8u64)
