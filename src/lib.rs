@@ -51,17 +51,6 @@ pub mod reexports {
     pub use siphasher::reexports::serde;
 }
 
-fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
-    let mut k1 = [0u8; 16];
-    let mut k2 = [0u8; 16];
-    k1.copy_from_slice(&seed[0..16]);
-    k2.copy_from_slice(&seed[16..32]);
-    [
-        SipHasher13::new_with_key(&k1),
-        SipHasher13::new_with_key(&k2),
-    ]
-}
-
 /// Bloom filter structure, generic over storage backend.
 ///
 /// Use [`OwnedStorage`] for heap-allocated filters, or [`MmapBloom`] for
@@ -185,7 +174,13 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
             storage,
             bitmap_bits,
             k_num,
-            sips: sips_from_seed(&seed),
+            sips: {
+                let mut k1 = [0u8; 16];
+                let mut k2 = [0u8; 16];
+                k1.copy_from_slice(&seed[0..16]);
+                k2.copy_from_slice(&seed[16..32]);
+                [SipHasher13::new_with_key(&k1), SipHasher13::new_with_key(&k2)]
+            },
             _phantom: PhantomData,
         })
     }
