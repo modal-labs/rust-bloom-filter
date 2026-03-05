@@ -1,3 +1,6 @@
+// (C)opyleft 2013-2024 Frank Denis
+// Licensed under the ICS license (https://opensource.org/licenses/ISC)
+
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
