@@ -21,13 +21,9 @@ use std::cmp;
 use std::convert::TryFrom;
 use std::f64;
 use std::fmt::{self, Debug};
-#[cfg(feature = "mmap")]
-use std::fs::OpenOptions;
 use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
-#[cfg(feature = "mmap")]
-use std::path::Path;
 
 #[cfg(feature = "random")]
 use getrandom::getrandom;
@@ -146,7 +142,11 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
         self.storage.bytes()
     }
 
-    fn from_raw_storage(storage: S) -> Result<Self, &'static str> {
+    /// Create a bloom filter from a pre-built storage backend.
+    ///
+    /// The storage must contain a valid serialized bloom filter
+    /// (as produced by [`to_bytes`](Bloom::to_bytes) or [`as_slice`](Bloom::as_slice)).
+    pub fn from_storage(storage: S) -> Result<Self, &'static str> {
         let (bitmap_bits, k_num, sips) = header::parse(storage.bytes())?;
         Ok(Self {
             storage,
@@ -297,12 +297,12 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
 
     /// Create a bloom filter from a slice of bytes, previously generated with `as_slice`.
     pub fn from_slice(bytes: &[u8]) -> Result<Self, &'static str> {
-        Self::from_raw_storage(OwnedStorage(bytes.to_vec()))
+        Self::from_storage(OwnedStorage(bytes.to_vec()))
     }
 
     /// Transform a byte vector into a bloom filter.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
-        Self::from_raw_storage(OwnedStorage(bytes))
+        Self::from_storage(OwnedStorage(bytes))
     }
 
     #[doc(hidden)]
@@ -323,28 +323,6 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
             sips: self.sips,
             _phantom: PhantomData,
         }
-    }
-}
-
-// --- MmapStorage constructors ---
-
-#[cfg(feature = "mmap")]
-impl<T: ?Sized> Bloom<T, MmapStorage> {
-    /// Create a read-only bloom filter from a memory-mapped file.
-    ///
-    /// The file is mapped with `PROT_READ` only.
-    pub fn from_mmap_file_readonly(file: &std::fs::File) -> io::Result<Self> {
-        let storage = MmapStorage::from_file(file)?;
-        Self::from_raw_storage(storage)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-    }
-
-    /// Create a read-only bloom filter from a file path.
-    ///
-    /// The file is opened read-only and mapped with `PROT_READ` only.
-    pub fn from_mmap_path_readonly<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).open(path)?;
-        Self::from_mmap_file_readonly(&file)
     }
 }
 
