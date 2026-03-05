@@ -340,11 +340,7 @@ impl<T: ?Sized> Bloom<T> {
     }
 
     fn from_bitmap(bitmap: BitMap) -> Result<Self, &'static str> {
-        let header = bitmap.header();
-        let k_num = BitMap::get_k_num(header);
-        let seed = BitMap::get_seed(header);
-        let sips = Self::sips_from_seed(&seed);
-        let bitmap_bits = bitmap.len_bits();
+        let (bitmap_bits, k_num, sips) = hash::parse_header(bitmap.as_slice())?;
         Ok(Self {
             bitmap,
             bitmap_bits,

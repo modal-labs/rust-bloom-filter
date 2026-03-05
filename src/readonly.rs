@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 #[cfg(feature = "mmap")]
@@ -14,7 +13,7 @@ use std::path::Path;
 
 use siphasher::sip::SipHasher13;
 
-use crate::bitmap::{BitMap, BITMAP_HEADER_SIZE};
+use crate::bitmap::BITMAP_HEADER_SIZE;
 use crate::hash;
 
 enum Storage {
@@ -70,16 +69,7 @@ impl<T: ?Sized> Debug for ReadOnlyBloom<T> {
 
 impl<T: ?Sized> ReadOnlyBloom<T> {
     fn from_storage(storage: Storage) -> Result<Self, &'static str> {
-        let bytes = storage.bytes();
-        BitMap::validate_layout(bytes)?;
-        let header = &bytes[0..BITMAP_HEADER_SIZE];
-        let k_num = BitMap::get_k_num(header);
-        let seed = BitMap::get_seed(header);
-        let sips = hash::sips_from_seed(&seed);
-        let bitmap_bits = u64::try_from(bytes.len() - BITMAP_HEADER_SIZE)
-            .unwrap()
-            .checked_mul(8)
-            .unwrap();
+        let (bitmap_bits, k_num, sips) = hash::parse_header(storage.bytes())?;
         Ok(Self {
             storage,
             bitmap_bits,
