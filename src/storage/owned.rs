@@ -1,15 +1,13 @@
 use std::convert::TryFrom;
-use std::hash::Hash;
 use std::io;
 use std::marker::PhantomData;
 
 #[cfg(feature = "random")]
 use getrandom::getrandom;
 
-use crate::hash;
 use crate::header::{HEADER_SIZE, VERSION};
 use crate::Bloom;
-use super::{Sealed, Storage};
+use super::{Sealed, Storage, StorageMut};
 
 /// Heap-allocated storage. This is the default storage for [`Bloom`](crate::Bloom).
 pub struct OwnedStorage(pub(crate) Vec<u8>);
@@ -22,6 +20,12 @@ impl Storage for OwnedStorage {
     }
 }
 
+impl StorageMut for OwnedStorage {
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
 impl OwnedStorage {
     pub(crate) fn new(len_bytes: usize, k_num: u32, seed: &[u8; 32]) -> Self {
         let mut bytes = vec![0; HEADER_SIZE + len_bytes];
@@ -31,10 +35,6 @@ impl OwnedStorage {
         crate::header::set_k_num(header, k_num);
         crate::header::set_seed(header, seed);
         Self(bytes)
-    }
-
-    pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
-        &mut self.0
     }
 }
 
@@ -59,57 +59,6 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
     /// Transform the bloom filter into a byte vector.
     pub fn into_bytes(self) -> Vec<u8> {
         self.storage.0
-    }
-
-    /// Record the presence of an item.
-    pub fn set(&mut self, item: &T)
-    where
-        T: Hash,
-    {
-        let mut hashes = [0u64, 0u64];
-        for k_i in 0..self.k_num {
-            let bit_offset =
-                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
-            let byte_offset = bit_offset / 8;
-            let bit_shift = bit_offset % 8;
-            bits[byte_offset] |= 1 << bit_shift;
-        }
-    }
-
-    /// Record the presence of an item in the set, and return the previous state of this item.
-    pub fn check_and_set(&mut self, item: &T) -> bool
-    where
-        T: Hash,
-    {
-        let mut hashes = [0u64, 0u64];
-        let mut found = true;
-        for k_i in 0..self.k_num {
-            let bit_offset =
-                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
-            let byte_offset = bit_offset / 8;
-            let bit_shift = bit_offset % 8;
-            if (bits[byte_offset] & (1 << bit_shift)) == 0 {
-                found = false;
-                bits[byte_offset] |= 1 << bit_shift;
-            }
-        }
-        found
-    }
-
-    /// Clear all of the bits in the filter, removing all keys from the set.
-    pub fn clear(&mut self) {
-        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
-            *byte = 0;
-        }
-    }
-
-    /// Set all of the bits in the filter, making it appear like every key is in the set.
-    pub fn fill(&mut self) {
-        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
-            *byte = !0;
-        }
     }
 
     /// Flush pending writes to persistent storage.

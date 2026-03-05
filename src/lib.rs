@@ -10,7 +10,7 @@ mod hash;
 mod header;
 pub mod storage;
 
-pub use storage::{OwnedStorage, Storage};
+pub use storage::{OwnedStorage, Storage, StorageMut};
 
 #[cfg(feature = "mmap")]
 pub use storage::MmapStorage;
@@ -137,6 +137,61 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
             sips,
             _phantom: PhantomData,
         })
+    }
+}
+
+// --- Write methods (StorageMut) ---
+
+impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
+    /// Record the presence of an item.
+    pub fn set(&mut self, item: &T)
+    where
+        T: Hash,
+    {
+        let mut hashes = [0u64, 0u64];
+        for k_i in 0..self.k_num {
+            let bit_offset =
+                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
+            let byte_offset = bit_offset / 8;
+            let bit_shift = bit_offset % 8;
+            bits[byte_offset] |= 1 << bit_shift;
+        }
+    }
+
+    /// Record the presence of an item in the set, and return the previous state of this item.
+    pub fn check_and_set(&mut self, item: &T) -> bool
+    where
+        T: Hash,
+    {
+        let mut hashes = [0u64, 0u64];
+        let mut found = true;
+        for k_i in 0..self.k_num {
+            let bit_offset =
+                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
+            let byte_offset = bit_offset / 8;
+            let bit_shift = bit_offset % 8;
+            if (bits[byte_offset] & (1 << bit_shift)) == 0 {
+                found = false;
+                bits[byte_offset] |= 1 << bit_shift;
+            }
+        }
+        found
+    }
+
+    /// Clear all of the bits in the filter, removing all keys from the set.
+    pub fn clear(&mut self) {
+        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
+            *byte = 0;
+        }
+    }
+
+    /// Set all of the bits in the filter, making it appear like every key is in the set.
+    pub fn fill(&mut self) {
+        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
+            *byte = !0;
+        }
     }
 }
 
