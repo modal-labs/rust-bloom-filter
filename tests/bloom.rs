@@ -2,6 +2,8 @@
 use bloomfilter::reexports::getrandom::getrandom;
 use bloomfilter::Bloom;
 #[cfg(feature = "mmap")]
+use bloomfilter::ReadOnlyBloom;
+#[cfg(feature = "mmap")]
 use std::fs;
 #[cfg(feature = "mmap")]
 use std::path::PathBuf;
@@ -137,7 +139,7 @@ fn bloom_test_mmap_readonly_check() {
     }
 
     {
-        let bloom = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
+        let bloom = ReadOnlyBloom::<[u8]>::from_mmap_path(&path).unwrap();
         assert!(bloom.check(key));
         assert!(!bloom.check(b"missing-key"));
     }
@@ -147,20 +149,17 @@ fn bloom_test_mmap_readonly_check() {
 
 #[test]
 #[cfg(feature = "mmap")]
-#[should_panic(expected = "cannot mutate a read-only memory-mapped filter")]
-fn bloom_test_mmap_readonly_panics_on_set() {
-    let path = unique_temp_path("readonly-set");
+fn bloom_test_mmap_readonly_from_bloom() {
     let seed = [10u8; 32];
+    let key = b"from-bloom-key";
 
-    {
-        let bloom = Bloom::<[u8]>::new_mmap_with_seed(&path, 64, 80, &seed).unwrap();
-        bloom.flush().unwrap();
-    }
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
 
-    let mut bloom = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
-    bloom.set(b"boom"); // should panic
-
-    // cleanup won't run due to panic, but temp files are fine
+    let readonly = ReadOnlyBloom::from(bloom);
+    assert!(readonly.check(key));
+    assert!(!readonly.check(b"missing-key-xx"));
+    assert_eq!(readonly.seed(), seed);
 }
 
 #[test]
@@ -175,7 +174,7 @@ fn bloom_test_mmap_readonly_load_serialized_filter() {
     let serialized = bloom.to_bytes();
     fs::write(&path, &serialized).unwrap();
 
-    let mapped = Bloom::<[u8]>::from_mmap_path_readonly(&path).unwrap();
+    let mapped = ReadOnlyBloom::<[u8]>::from_mmap_path(&path).unwrap();
     assert!(mapped.check(key));
     assert_eq!(mapped.to_bytes(), serialized);
 

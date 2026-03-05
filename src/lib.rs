@@ -282,26 +282,6 @@ impl<T: ?Sized> Bloom<T> {
         Self::from_mmap_file(&file)
     }
 
-    /// Create a read-only bloom filter from a memory-mapped file.
-    /// The returned filter supports `check` but will panic on mutation
-    /// (`set`, `clear`, `fill`, `check_and_set`).
-    #[cfg(feature = "mmap")]
-    pub fn from_mmap_file_readonly(file: &File) -> io::Result<Self> {
-        let mmap = BitMap::map_file(file)?;
-        let bitmap = BitMap::from_mmap(mmap)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        Self::from_bitmap(bitmap).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-    }
-
-    /// Create a read-only bloom filter from a memory-mapped file path.
-    /// The returned filter supports `check` but will panic on mutation
-    /// (`set`, `clear`, `fill`, `check_and_set`).
-    #[cfg(feature = "mmap")]
-    pub fn from_mmap_path_readonly<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).open(path)?;
-        Self::from_mmap_file_readonly(&file)
-    }
-
     /// Serialize the bloom filter to an opaque byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.bitmap.to_bytes()
@@ -419,6 +399,107 @@ impl<T: ?Sized> Bloom<T> {
             (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
                 % 0xFFFF_FFFF_FFFF_FFC5u64 //largest u64 prime
         }
+    }
+}
+
+/// A read-only view of a Bloom filter.
+///
+/// This wrapper exposes only non-mutating methods (`check`, `as_slice`, etc.)
+/// and prevents accidental writes at compile time. It is especially useful
+/// for memory-mapped filters opened in read-only mode.
+#[derive(Clone)]
+pub struct ReadOnlyBloom<T: ?Sized> {
+    inner: Bloom<T>,
+}
+
+impl<T: ?Sized> Debug for ReadOnlyBloom<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ReadOnly({:?})", self.inner)
+    }
+}
+
+impl<T: ?Sized> From<Bloom<T>> for ReadOnlyBloom<T> {
+    fn from(bloom: Bloom<T>) -> Self {
+        Self { inner: bloom }
+    }
+}
+
+impl<T: ?Sized> ReadOnlyBloom<T> {
+    /// Create a read-only bloom filter from a read-only memory-mapped file.
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_file(file: &File) -> io::Result<Self> {
+        let mmap = BitMap::map_file(file)?;
+        let bitmap = BitMap::from_mmap(mmap)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let inner = Bloom::from_bitmap(bitmap)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        Ok(Self { inner })
+    }
+
+    /// Create a read-only bloom filter from a memory-mapped file path.
+    #[cfg(feature = "mmap")]
+    pub fn from_mmap_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).open(path)?;
+        Self::from_mmap_file(&file)
+    }
+
+    /// Create a read-only bloom filter from a byte slice.
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, &'static str> {
+        Bloom::from_slice(bytes).map(Self::from)
+    }
+
+    /// Create a read-only bloom filter from a byte vector.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, &'static str> {
+        Bloom::from_bytes(bytes).map(Self::from)
+    }
+
+    /// Check if an item is present in the set.
+    /// There can be false positives, but no false negatives.
+    pub fn check(&self, item: &T) -> bool
+    where
+        T: Hash,
+    {
+        self.inner.check(item)
+    }
+
+    /// Return the number of bits in the filter.
+    pub fn len(&self) -> u64 {
+        self.inner.len()
+    }
+
+    /// Test if there are no elements in the set.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Return the number of hash functions used for `check`.
+    pub fn number_of_hash_functions(&self) -> u32 {
+        self.inner.number_of_hash_functions()
+    }
+
+    /// Return the seed used to generate the hash functions.
+    pub fn seed(&self) -> [u8; 32] {
+        self.inner.seed()
+    }
+
+    /// View the bloom filter as an opaque slice of bytes.
+    pub fn as_slice(&self) -> &[u8] {
+        self.inner.as_slice()
+    }
+
+    /// Serialize the bloom filter to an opaque byte vector.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.inner.to_bytes()
+    }
+
+    /// Transform the bloom filter into a byte vector.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.inner.into_bytes()
+    }
+
+    /// Unwrap into the inner `Bloom` filter.
+    pub fn into_inner(self) -> Bloom<T> {
+        self.inner
     }
 }
 
