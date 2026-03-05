@@ -13,7 +13,7 @@ pub mod storage;
 pub use storage::{OwnedStorage, Storage};
 
 #[cfg(feature = "mmap")]
-pub use storage::MmapReadOnlyStorage;
+pub use storage::MmapStorage;
 
 use bitmap::BITMAP_HEADER_SIZE;
 
@@ -44,7 +44,7 @@ pub mod reexports {
 /// Bloom filter structure, generic over storage backend.
 ///
 /// The default storage is [`OwnedStorage`] (heap-allocated).
-/// Use [`MmapReadOnlyStorage`] for read-only memory-mapped files
+/// Use [`MmapStorage`] for read-only memory-mapped files
 /// (see [`ReadOnlyBloom`]).
 pub struct Bloom<T: ?Sized, S = OwnedStorage> {
     storage: S,
@@ -56,10 +56,10 @@ pub struct Bloom<T: ?Sized, S = OwnedStorage> {
 
 /// A read-only bloom filter backed by a `PROT_READ` memory-mapped file.
 ///
-/// This is a type alias for `Bloom<T, MmapReadOnlyStorage>`.
+/// This is a type alias for `Bloom<T, MmapStorage>`.
 /// It has no mutating methods — only [`check`](Bloom::check) and introspection.
 #[cfg(feature = "mmap")]
-pub type ReadOnlyBloom<T> = Bloom<T, MmapReadOnlyStorage>;
+pub type ReadOnlyBloom<T> = Bloom<T, MmapStorage>;
 
 // --- Debug ---
 
@@ -334,15 +334,15 @@ impl<T: ?Sized> Bloom<T> {
     }
 }
 
-// --- MmapReadOnlyStorage constructors ---
+// --- MmapStorage constructors ---
 
 #[cfg(feature = "mmap")]
-impl<T: ?Sized> Bloom<T, MmapReadOnlyStorage> {
+impl<T: ?Sized> Bloom<T, MmapStorage> {
     /// Create a read-only bloom filter from a memory-mapped file.
     ///
     /// The file is mapped with `PROT_READ` only.
     pub fn from_mmap_file_readonly(file: &std::fs::File) -> io::Result<Self> {
-        let storage = MmapReadOnlyStorage::from_file(file)?;
+        let storage = MmapStorage::from_file(file)?;
         Self::from_raw_storage(storage)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
