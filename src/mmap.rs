@@ -7,7 +7,7 @@ use std::path::Path;
 
 use memmap2::{Mmap, MmapOptions};
 
-use crate::{Bloom, Storage};
+use crate::Bloom;
 
 /// Read-only memory-mapped storage.
 ///
@@ -26,8 +26,8 @@ use crate::{Bloom, Storage};
 /// for the lifetime of this value.
 pub struct MmapStorage(Mmap);
 
-impl Storage for MmapStorage {
-    fn bytes(&self) -> &[u8] {
+impl AsRef<[u8]> for MmapStorage {
+    fn as_ref(&self) -> &[u8] {
         &self.0[..]
     }
 }

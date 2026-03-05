@@ -31,18 +31,6 @@ pub use mmap::MmapStorage;
 #[cfg(feature = "mmap")]
 pub type MmapBloom<T> = Bloom<T, MmapStorage>;
 
-/// Trait for bloom filter storage backends.
-pub trait Storage {
-    /// View the raw bytes (header + bitmap).
-    fn bytes(&self) -> &[u8];
-}
-
-/// Trait for mutable bloom filter storage backends.
-pub trait StorageMut: Storage {
-    /// View the raw bytes mutably.
-    fn bytes_mut(&mut self) -> &mut [u8];
-}
-
 pub mod reexports {
     #[cfg(feature = "random")]
     pub use ::getrandom;
@@ -133,16 +121,16 @@ impl<T: ?Sized, S> Bloom<T, S> {
     }
 }
 
-// --- Read methods (any Storage) ---
+// --- Read methods (any AsRef<[u8]> storage) ---
 
-impl<T: ?Sized, S: Storage> Bloom<T, S> {
+impl<T: ?Sized, S: AsRef<[u8]>> Bloom<T, S> {
     /// Check if an item is present in the set.
     /// There can be false positives, but no false negatives.
     pub fn check(&self, item: &T) -> bool
     where
         T: Hash,
     {
-        let bits = &self.storage.bytes()[HEADER_SIZE..];
+        let bits = &self.storage.as_ref()[HEADER_SIZE..];
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
@@ -158,18 +146,18 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
 
     /// Test if there are no elements in the set.
     pub fn is_empty(&self) -> bool {
-        self.storage.bytes()[HEADER_SIZE..]
+        self.storage.as_ref()[HEADER_SIZE..]
             .iter()
             .all(|&b| b == 0)
     }
 
     /// View the bloom filter as an opaque slice of bytes.
     pub fn as_slice(&self) -> &[u8] {
-        self.storage.bytes()
+        self.storage.as_ref()
     }
 
     pub(crate) fn from_storage(storage: S) -> Result<Self, &'static str> {
-        let (bitmap_bits, k_num, seed) = header::parse(storage.bytes())?;
+        let (bitmap_bits, k_num, seed) = header::parse(storage.as_ref())?;
         Ok(Self {
             storage,
             bitmap_bits,
@@ -186,9 +174,9 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
     }
 }
 
-// --- Write methods (StorageMut) ---
+// --- Write methods (any AsMut<[u8]> storage) ---
 
-impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
+impl<T: ?Sized, S: AsRef<[u8]> + AsMut<[u8]>> Bloom<T, S> {
     /// Record the presence of an item.
     pub fn set(&mut self, item: &T)
     where
@@ -198,7 +186,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         for k_i in 0..self.k_num {
             let bit_offset =
                 (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
+            let bits = &mut self.storage.as_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             bits[byte_offset] |= 1 << bit_shift;
@@ -215,7 +203,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         for k_i in 0..self.k_num {
             let bit_offset =
                 (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
+            let bits = &mut self.storage.as_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             if (bits[byte_offset] & (1 << bit_shift)) == 0 {
@@ -228,14 +216,14 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
 
     /// Clear all of the bits in the filter, removing all keys from the set.
     pub fn clear(&mut self) {
-        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
+        for byte in self.storage.as_mut()[HEADER_SIZE..].iter_mut() {
             *byte = 0;
         }
     }
 
     /// Set all of the bits in the filter, making it appear like every key is in the set.
     pub fn fill(&mut self) {
-        for byte in self.storage.bytes_mut()[HEADER_SIZE..].iter_mut() {
+        for byte in self.storage.as_mut()[HEADER_SIZE..].iter_mut() {
             *byte = !0;
         }
     }

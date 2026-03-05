@@ -8,19 +8,19 @@ use std::marker::PhantomData;
 use getrandom::getrandom;
 
 use crate::header::{HEADER_SIZE, VERSION};
-use crate::{Bloom, Storage, StorageMut};
+use crate::Bloom;
 
 /// Heap-allocated storage. This is the default storage for [`Bloom`](crate::Bloom).
 pub struct OwnedStorage(pub(crate) Vec<u8>);
 
-impl Storage for OwnedStorage {
-    fn bytes(&self) -> &[u8] {
+impl AsRef<[u8]> for OwnedStorage {
+    fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl StorageMut for OwnedStorage {
-    fn bytes_mut(&mut self) -> &mut [u8] {
+impl AsMut<[u8]> for OwnedStorage {
+    fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
 }
@@ -40,7 +40,7 @@ impl OwnedStorage {
 impl<T: ?Sized> Clone for Bloom<T, OwnedStorage> {
     fn clone(&self) -> Self {
         Self {
-            storage: OwnedStorage(self.storage.bytes().to_vec()),
+            storage: OwnedStorage(self.storage.as_ref().to_vec()),
             bitmap_bits: self.bitmap_bits,
             k_num: self.k_num,
             sips: self.sips,
@@ -52,7 +52,7 @@ impl<T: ?Sized> Clone for Bloom<T, OwnedStorage> {
 impl<T: ?Sized> Bloom<T, OwnedStorage> {
     /// Serialize the bloom filter to an opaque byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.storage.bytes().to_vec()
+        self.storage.as_ref().to_vec()
     }
 
     /// Transform the bloom filter into a byte vector.
