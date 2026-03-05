@@ -1,6 +1,7 @@
 #[cfg(feature = "random")]
 use bloomfilter::reexports::getrandom::getrandom;
 use bloomfilter::Bloom;
+#[cfg(feature = "mmap")]
 use bloomfilter::ReadOnlyBloom;
 #[cfg(feature = "mmap")]
 use std::fs;
@@ -81,6 +82,19 @@ fn bloom_test_flush_owned_noop() {
 }
 
 #[test]
+fn bloom_test_check_via_from_bytes() {
+    let seed = [12u8; 32];
+    let key = b"from-bytes-key";
+
+    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
+    bloom.set(key);
+
+    let loaded = Bloom::from_bytes(bloom.to_bytes()).unwrap();
+    assert!(loaded.check(key));
+    assert!(!loaded.check(b"not-in-filter!"));
+}
+
+#[test]
 #[cfg(feature = "mmap")]
 fn bloom_test_mmap_persist_and_reload() {
     let path = unique_temp_path("persist-and-reload");
@@ -149,7 +163,7 @@ fn readonly_bloom_mmap_check() {
         bloom.flush().unwrap();
     }
 
-    let bloom = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    let bloom = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
     assert!(bloom.check(key));
     assert!(!bloom.check(b"missing-key!"));
 
@@ -168,24 +182,11 @@ fn readonly_bloom_mmap_load_serialized() {
     let serialized = bloom.to_bytes();
     fs::write(&path, &serialized).unwrap();
 
-    let ro = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    let ro = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
     assert!(ro.check(key));
     assert_eq!(ro.to_bytes(), serialized);
 
     fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn readonly_bloom_from_bytes() {
-    let seed = [12u8; 32];
-    let key = b"from-bytes-key";
-
-    let mut bloom = Bloom::new_with_seed(64, 80, &seed).unwrap();
-    bloom.set(key);
-
-    let ro = ReadOnlyBloom::from_bytes(bloom.to_bytes()).unwrap();
-    assert!(ro.check(key));
-    assert!(!ro.check(b"not-in-filter!"));
 }
 
 #[test]
@@ -194,7 +195,7 @@ fn readonly_bloom_mmap_rejects_invalid_file() {
     let path = unique_temp_path("readonly-invalid");
     fs::write(&path, [1u8, 2u8, 3u8]).unwrap();
 
-    let err = ReadOnlyBloom::<[u8]>::from_mmap_path(&path).unwrap_err();
+    let err = ReadOnlyBloom::<[u8]>::from_mmap_path_readonly(&path).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 
     fs::remove_file(path).unwrap();
@@ -230,7 +231,7 @@ fn readonly_bloom_mmap_is_prot_read() {
     }
 
     // Open as ReadOnlyBloom and verify the mapping flags via /proc/self/maps.
-    let ro = ReadOnlyBloom::from_mmap_path(&path).unwrap();
+    let ro = ReadOnlyBloom::from_mmap_path_readonly(&path).unwrap();
     assert!(ro.check(key));
 
     let perms = mmap_perms_for_path(&path);
