@@ -62,24 +62,6 @@ fn sips_from_seed(seed: &[u8; 32]) -> [SipHasher13; 2] {
     ]
 }
 
-fn bloom_hash<T: Hash + ?Sized>(
-    sips: &[SipHasher13; 2],
-    hashes: &mut [u64; 2],
-    item: &T,
-    k_i: u32,
-) -> u64 {
-    if k_i < 2 {
-        let mut sip = sips[k_i as usize];
-        item.hash(&mut sip);
-        let hash = sip.finish();
-        hashes[k_i as usize] = hash;
-        hash
-    } else {
-        (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
-            % 0xFFFF_FFFF_FFFF_FFC5u64 // largest u64 prime
-    }
-}
-
 /// Bloom filter structure, generic over storage backend.
 ///
 /// Use [`OwnedStorage`] for heap-allocated filters, or [`MmapBloom`] for
@@ -138,6 +120,22 @@ impl<T: ?Sized, S> Bloom<T, S> {
         ((items_count as f64) * f64::ln(fp_p) / (-8.0 * log2_2)).ceil() as usize
     }
 
+    fn bloom_hash(&self, hashes: &mut [u64; 2], item: &T, k_i: u32) -> u64
+    where
+        T: Hash,
+    {
+        if k_i < 2 {
+            let mut sip = self.sips[k_i as usize];
+            item.hash(&mut sip);
+            let hash = sip.finish();
+            hashes[k_i as usize] = hash;
+            hash
+        } else {
+            (hashes[0]).wrapping_add((k_i as u64).wrapping_mul(hashes[1]))
+                % 0xFFFF_FFFF_FFFF_FFC5u64 // largest u64 prime
+        }
+    }
+
     fn optimal_k_num(bitmap_bits: u64, items_count: usize) -> u32 {
         let m = bitmap_bits as f64;
         let n = items_count as f64;
@@ -159,7 +157,7 @@ impl<T: ?Sized, S: Storage> Bloom<T, S> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
             if (bits[byte_offset] & (1 << bit_shift)) == 0 {
@@ -204,7 +202,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         let mut hashes = [0u64, 0u64];
         for k_i in 0..self.k_num {
             let bit_offset =
-                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
@@ -221,7 +219,7 @@ impl<T: ?Sized, S: StorageMut> Bloom<T, S> {
         let mut found = true;
         for k_i in 0..self.k_num {
             let bit_offset =
-                (bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
+                (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
             let bits = &mut self.storage.bytes_mut()[HEADER_SIZE..];
             let byte_offset = bit_offset / 8;
             let bit_shift = bit_offset % 8;
