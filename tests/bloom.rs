@@ -77,13 +77,6 @@ fn bloom_test_load() {
 }
 
 #[test]
-fn bloom_test_flush_owned_noop() {
-    let seed = [42u8; 32];
-    let bloom = Bloom::<[u8], OwnedStorage>::new_with_seed(16, 80, &seed).unwrap();
-    bloom.flush().unwrap();
-}
-
-#[test]
 fn bloom_test_check_via_from_bytes() {
     let seed = [12u8; 32];
     let key = b"from-bytes-key";

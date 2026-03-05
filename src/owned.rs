@@ -1,5 +1,4 @@
 use std::convert::TryFrom;
-use std::io;
 use std::marker::PhantomData;
 
 #[cfg(feature = "random")]
@@ -56,12 +55,6 @@ impl<T: ?Sized> Bloom<T, OwnedStorage> {
     /// Transform the bloom filter into a byte vector.
     pub fn into_bytes(self) -> Vec<u8> {
         self.storage.0
-    }
-
-    /// Flush pending writes to persistent storage.
-    /// For in-memory filters, this is a no-op.
-    pub fn flush(&self) -> io::Result<()> {
-        Ok(())
     }
 
     /// Create a new bloom filter structure.

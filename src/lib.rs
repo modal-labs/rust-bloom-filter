@@ -51,7 +51,7 @@ pub mod reexports {
 /// Bloom filter structure, generic over storage backend.
 ///
 /// The default storage is [`OwnedStorage`] (heap-allocated).
-/// Use [`MmapStorage`] for read-only memory-mapped files.
+/// With the `mmap` feature, use `MmapStorage` for read-only memory-mapped files.
 pub struct Bloom<T: ?Sized, S> {
     pub(crate) storage: S,
     pub(crate) bitmap_bits: u64,
