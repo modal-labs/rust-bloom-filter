@@ -180,15 +180,15 @@ impl<T: ?Sized, S: AsRef<[u8]>> Bloom<T, S> {
         }
         let len_bytes_u64 = u64::from_le_bytes(header[1..][0..8].try_into().unwrap());
         let len_bytes: usize = len_bytes_u64.try_into().map_err(|_| "Too big")?;
-        if bits.len() != len_bytes {
-            return Err("Invalid size");
-        }
         if len_bytes == 0 {
             return Err("Bitmap cannot be empty");
         }
+        if bits.len() != len_bytes {
+            return Err("Invalid size");
+        }
 
         let bitmap_bits =
-            NonZeroU64::new((bits.len() as u64).checked_mul(8).unwrap()).unwrap();
+            NonZeroU64::new((bits.len() as u64) * 8).expect("nonempty bitmap");
         let mut seed = [0u8; 32];
         seed.copy_from_slice(&header[13..][0..32]);
 
