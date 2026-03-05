@@ -24,7 +24,7 @@ use crate::{Bloom, Storage};
 /// accessing pages beyond the new file size causes `SIGBUS` (undefined
 /// behaviour in Rust). Callers must ensure the file is not truncated
 /// for the lifetime of this value.
-pub struct MmapStorage(pub(crate) Mmap);
+pub struct MmapStorage(Mmap);
 
 impl Storage for MmapStorage {
     fn bytes(&self) -> &[u8] {
