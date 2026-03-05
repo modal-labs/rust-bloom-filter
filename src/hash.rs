@@ -30,3 +30,22 @@ pub(crate) fn bloom_hash<T: Hash + ?Sized>(
             % 0xFFFF_FFFF_FFFF_FFC5u64 // largest u64 prime
     }
 }
+
+pub(crate) fn check<T: Hash + ?Sized>(
+    sips: &[SipHasher13; 2],
+    bits: &[u8],
+    bitmap_bits: u64,
+    k_num: u32,
+    item: &T,
+) -> bool {
+    let mut hashes = [0u64, 0u64];
+    for k_i in 0..k_num {
+        let bit_offset = (bloom_hash(sips, &mut hashes, item, k_i) % bitmap_bits) as usize;
+        let byte_offset = bit_offset / 8;
+        let bit_shift = bit_offset % 8;
+        if (bits[byte_offset] & (1 << bit_shift)) == 0 {
+            return false;
+        }
+    }
+    true
+}

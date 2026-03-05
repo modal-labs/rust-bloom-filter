@@ -61,7 +61,7 @@ impl BitMap {
     }
 
     #[inline]
-    fn bits(&self) -> &[u8] {
+    pub(crate) fn bits(&self) -> &[u8] {
         &self.bytes()[BITMAP_HEADER_SIZE..]
     }
 

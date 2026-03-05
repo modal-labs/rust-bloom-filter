@@ -131,17 +131,7 @@ impl<T: ?Sized> ReadOnlyBloom<T> {
         T: Hash,
     {
         let bits = &self.storage.bytes()[BITMAP_HEADER_SIZE..];
-        let mut hashes = [0u64, 0u64];
-        for k_i in 0..self.k_num {
-            let bit_offset =
-                (hash::bloom_hash(&self.sips, &mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            let byte_offset = bit_offset / 8;
-            let bit_shift = bit_offset % 8;
-            if (bits[byte_offset] & (1 << bit_shift)) == 0 {
-                return false;
-            }
-        }
-        true
+        hash::check(&self.sips, bits, self.bitmap_bits, self.k_num, item)
     }
 
     /// View the bloom filter as an opaque slice of bytes.

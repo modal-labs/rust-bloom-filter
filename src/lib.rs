@@ -231,14 +231,7 @@ impl<T: ?Sized> Bloom<T> {
     where
         T: Hash,
     {
-        let mut hashes = [0u64, 0u64];
-        for k_i in 0..self.k_num {
-            let bit_offset = (self.bloom_hash(&mut hashes, item, k_i) % self.bitmap_bits) as usize;
-            if self.bitmap.get(bit_offset) == false {
-                return false;
-            }
-        }
-        true
+        hash::check(&self.sips, self.bitmap.bits(), self.bitmap_bits, self.k_num, item)
     }
 
     /// Record the presence of an item in the set, and return the previous state of this item.
