@@ -26,12 +26,13 @@ Here is a simple example for creating a bloom filter with a false positive rate 
 
 ```rust,ignore
 use bloomfilter::Bloom;
+use std::num::NonZeroUsize;
 
-let num_items = 100000;
+let num_items = NonZeroUsize::new(100000).unwrap();
 let fp_rate = 0.001;
 let seed = [1u8; 32];
 
-let mut bloom = Bloom::new_for_fp_rate_with_seed(num_items, fp_rate, &seed).unwrap();
+let mut bloom = Bloom::new_for_fp_rate_with_seed(num_items, fp_rate, &seed);
 bloom.set(&10);   // insert 10 in the bloom filter
 bloom.check(&10); // return true
 bloom.check(&20); // return false
@@ -48,39 +49,22 @@ bloomfilter = { version = "3", features = ["mmap"] }
 ```
 
 ```rust,ignore
-use bloomfilter::Bloom;
+use bloomfilter::{Bloom, MmapBloom};
 
 let seed = [7u8; 32];
-let mut path = std::env::temp_dir();
-path.push(format!("bloomfilter-mmap-example-{}.bin", std::process::id()));
-let mut bloom = Bloom::new_mmap_with_seed(&path, 4096, 10000, &seed).unwrap();
+let path = std::env::temp_dir().join("bloomfilter-mmap-example.bin");
 
+// Create a filter in memory, populate it, and write to disk.
+let mut bloom = Bloom::new_with_seed(
+    std::num::NonZeroUsize::new(4096).unwrap(),
+    std::num::NonZeroUsize::new(10000).unwrap(),
+    &seed,
+);
 bloom.set(&1234);
-bloom.flush().unwrap(); // no-op for in-memory filters, fsync-like for mmap
+std::fs::write(&path, bloom.as_slice()).unwrap();
 
-let reopened = Bloom::from_mmap_path(&path).unwrap();
-assert!(reopened.check(&1234));
-std::fs::remove_file(path).ok();
-```
-
-Memory-mapped loading is compatible with filters serialized the traditional
-way (without mmap):
-
-```rust,ignore
-use bloomfilter::Bloom;
-
-let seed = [8u8; 32];
-let mut path = std::env::temp_dir();
-path.push(format!(
-    "bloomfilter-mmap-compat-example-{}.bin",
-    std::process::id()
-));
-
-let mut plain = Bloom::new_with_seed(4096, 10000, &seed).unwrap();
-plain.set(&1234);
-std::fs::write(&path, plain.as_slice()).unwrap();
-
-let mapped = Bloom::from_mmap_path(&path).unwrap();
+// Reopen with a read-only memory map (PROT_READ | MAP_SHARED).
+let mapped: MmapBloom<i32> = Bloom::from_path(&path).unwrap();
 assert!(mapped.check(&1234));
 std::fs::remove_file(path).ok();
 ```
