@@ -24,16 +24,49 @@ bloomfilter = "3"
 
 Here is a simple example for creating a bloom filter with a false positive rate of 0.001 and query for presence of some numbers.
 
-```rust
+```rust,ignore
 use bloomfilter::Bloom;
+use std::num::NonZeroUsize;
 
-let num_items = 100000;
+let num_items = NonZeroUsize::new(100000).unwrap();
 let fp_rate = 0.001;
+let seed = [1u8; 32];
 
-let mut bloom = Bloom::new_for_fp_rate(num_items, fp_rate).unwrap();
+let mut bloom = Bloom::new_for_fp_rate_with_seed(num_items, fp_rate, &seed);
 bloom.set(&10);   // insert 10 in the bloom filter
 bloom.check(&10); // return true
 bloom.check(&20); // return false
+```
+
+### Memory-mapped filters (optional)
+
+Enable the `mmap` feature to back filters with a file instead of keeping the
+whole serialized buffer in heap memory:
+
+```toml
+[dependencies]
+bloomfilter = { version = "3", features = ["mmap"] }
+```
+
+```rust,ignore
+use bloomfilter::{Bloom, MmapBloom};
+
+let seed = [7u8; 32];
+let path = std::env::temp_dir().join("bloomfilter-mmap-example.bin");
+
+// Create a filter in memory, populate it, and write to disk.
+let mut bloom = Bloom::new_with_seed(
+    std::num::NonZeroUsize::new(4096).unwrap(),
+    std::num::NonZeroUsize::new(10000).unwrap(),
+    &seed,
+);
+bloom.set(&1234);
+std::fs::write(&path, bloom.as_slice()).unwrap();
+
+// Reopen with a read-only memory map (PROT_READ | MAP_SHARED).
+let mapped: MmapBloom<i32> = Bloom::from_path(&path).unwrap();
+assert!(mapped.check(&1234));
+std::fs::remove_file(path).ok();
 ```
 
 ### License

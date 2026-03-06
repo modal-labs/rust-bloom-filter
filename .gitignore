@@ -1,5 +1,6 @@
 *.dSYM
 *~
+.idea/
 .rust
 build
 Cargo.lock
