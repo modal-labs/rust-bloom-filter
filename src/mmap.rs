@@ -57,6 +57,19 @@ impl MmapStorage {
         let file = OpenOptions::new().read(true).open(path)?;
         Self::from_file(&file)
     }
+
+    /// Pin all mapped pages in physical memory via `mlock(2)`.
+    ///
+    /// Prevents page faults that would block the calling thread when
+    /// accessing the bloom filter. This is important when bloom checks
+    /// run on async runtime threads where a page fault would stall the
+    /// entire reactor.
+    ///
+    /// Fails if the process lacks `CAP_IPC_LOCK` or the locked-memory
+    /// limit (`ulimit -l`) is too low for the mapping size.
+    pub fn lock(&self) -> io::Result<()> {
+        self.0.lock()
+    }
 }
 
 impl<T: ?Sized> Bloom<T, MmapStorage> {
@@ -73,6 +86,18 @@ impl<T: ?Sized> Bloom<T, MmapStorage> {
     /// The file is opened read-only and mapped with `PROT_READ | MAP_SHARED`.
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         Self::parse(MmapStorage::from_path(path)?)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    /// Open a read-only memory-mapped bloom filter and pin it in RAM.
+    ///
+    /// Equivalent to [`from_path`](Self::from_path) followed by
+    /// [`MmapStorage::lock`]. Use this when bloom checks run on async
+    /// runtime threads where a page fault would stall the reactor.
+    pub fn from_path_locked<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let storage = MmapStorage::from_path(path)?;
+        storage.lock()?;
+        Self::parse(storage)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
